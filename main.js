@@ -14,28 +14,28 @@ let repeatButton
 
 //kick all
 function kickAll(confNumber) {
-    sendQuery('confbridge kick ', confNumber,' all')
+    sendQuery('confbridge kick ', confNumber, ' all')
 }
 
 //kick one extension
-function kickOne( confNumber, sipNumber,) {
+function kickOne(confNumber, sipNumber,) {
     sendQuery('confbridge kick ', confNumber, sipNumber)
-    setTimeout(()=>loadOneConf(confNumber),1000)
+    setTimeout(() => loadOneConf(confNumber), 1000)
 }
 
 function showPeerInfo(sipNumber) {
     sendQuery('sip show peer', sipNumber)
 }
 
-function unregisterPeer(sipNumber){
+function unregisterPeer(sipNumber) {
     sendQuery('sip unregister', sipNumber)
 }
 
-function showCalls(){
+function showCalls() {
     sendQuery('core show channels')
 }
 
-function showCallsDetailed(){
+function showCallsDetailed() {
     sendQuery('core show channels verbose')
 }
 
@@ -47,7 +47,7 @@ function showCallsDetailed(){
 function initExtension() {
 
     let newDiv = document.createElement("div");
- 
+
     newDiv.innerHTML = `
         <div id="lazyAsterisk">
             <div class="controlButtons">
@@ -79,14 +79,14 @@ function initExtension() {
         </div>`
     document.querySelectorAll('.container-fluid')[1].prepend(newDiv)
     outputDiv = document.querySelector('.ext-output')
-    document.querySelector('.loadConfs').addEventListener('click',()=>
+    document.querySelector('.loadConfs').addEventListener('click', () =>
         loadAllConfs()
-        )
+    )
 
-	//show calls button
+    //show calls button
 
-	document.querySelector('.showCalls').addEventListener('click',showCalls)
-	document.querySelector('.showCallsDetailed').addEventListener('click',showCallsDetailed)
+    document.querySelector('.showCalls').addEventListener('click', showCalls)
+    document.querySelector('.showCallsDetailed').addEventListener('click', showCallsDetailed)
 
 
 
@@ -101,51 +101,51 @@ function initExtension() {
 
     repeatButton = document.querySelector('.onRepeat')
 
-    repeatButton.addEventListener('click',()=>{
-        if (isOnRepeat === false){
+    repeatButton.addEventListener('click', () => {
+        if (isOnRepeat === false) {
             isOnRepeat = true
-            repeater = setInterval(()=>buttonCLI.click(),5000)
+            repeater = setInterval(() => buttonCLI.click(), 5000)
             repeatButton.innerText = 'Перестати повторювати'
-	    repeatButton.classList.add('test')
+            repeatButton.classList.add('test')
         } else {
             isOnRepeat = false
-            clearInterval(repeater) 
+            clearInterval(repeater)
             repeatButton.innerText = 'Відправляти раз в 5 секунд'
-	    repeatButton.classList.remove('test')
+            repeatButton.classList.remove('test')
         }
 
     })
-        
+
 }
 
 // shoots when conf button pressed, 1 sec delay
 function loadAllConfs() {
     sendQuery('confbridge list')
-    setTimeout(()=>{
+    setTimeout(() => {
         let preElement = document.querySelectorAll('pre')[2].textContent
 
         const regex = /\d{3,}/g
-        let matches = [...preElement.matchAll(regex)].map(item=>item[0])
-    
+        let matches = [...preElement.matchAll(regex)].map(item => item[0])
 
-        if ( matches.length > 0 ){
+
+        if (matches.length > 0) {
             let select = document.createElement("select");
-            
+
             let placeholder = document.createElement("option");
             placeholder.text = 'Оберіть конференцію'
 
             select.append(placeholder)
 
-            for (match of matches){
+            for (match of matches) {
                 let option = document.createElement("option");
                 option.value = match
                 option.text = match
                 select.appendChild(option);
-            }       
+            }
             outputDiv.innerHTML = ''
             outputDiv.appendChild(select)
-        
-            select.addEventListener('change', ()=>loadOneConf(select.value))
+
+            select.addEventListener('change', () => loadOneConf(select.value))
         } else {
             //nema conferenciy
 
@@ -154,62 +154,61 @@ function loadAllConfs() {
             outputDiv.append(warningIfEmpty)
         }
 
-    },1000)
-    }
-    
+    }, 1000)
+}
+
 // shoots when exact conf is selected, 1 sec delay
 function loadOneConf(confNumber) {
     sendQuery('confbridge list ', confNumber)
 
-    setTimeout(()=>{
+    setTimeout(() => {
 
         let preElement = document.querySelectorAll('pre')[2]
-        
-        preElement.querySelectorAll('button').forEach(btn=>btn.remove())
+
+        preElement.querySelectorAll('button').forEach(btn => btn.remove())
 
         preElement.style.maxWidth = '90vw'
-        
 
-        
+
+
         const regex = /SIP\/[^\s]+/g
-       
+
         let matches = [...preElement.textContent.matchAll(regex)]
-        
-        
-        // matches = [[...new Set(...matches)]]
-        console.log(matches)
-        for (match of matches){
-            preElement.innerHTML += `<button data-id="${match}">kick ${match}</button>`
+
+        // Fix: Deduplicate matches to prevent multiple buttons for the same SIP peer
+        let uniqueMatches = [...new Set(matches.map(m => m[0]))]
+
+        const fragment = document.createDocumentFragment();
+
+        for (let match of uniqueMatches) {
+            let btn = document.createElement('button');
+            btn.dataset.id = match;
+            btn.innerText = `kick ${match}`; // Use innerText to match original
+            btn.addEventListener('click', () => {
+                kickOne(confNumber, match);
+                // Clear buttons after click as per original logic
+                preElement.querySelectorAll('button').forEach(btn => btn.remove());
+            });
+            fragment.appendChild(btn);
         }
-        let buttons = document.querySelectorAll('[data-id]')
-        
-        buttons.forEach((button)=> {
-                console.log(button)
-                button.addEventListener('click', ()=>{
-                    kickOne( confNumber, button.dataset.id),
-                    preElement.querySelectorAll('button').forEach(btn=>btn.remove())
-                      }
-                    )
-        }  
-        )
+
+        // kick all btn 
+        let kickAllBTN = document.createElement('button')
+        kickAllBTN.innerText = 'ВИКИНУТИ ВСІХ'
+        kickAllBTN.style.color = 'red'
+
+        kickAllBTN.addEventListener('click', () => {
+            kickAll(confNumber)
+        })
+        fragment.appendChild(kickAllBTN)
+
+        preElement.appendChild(fragment)
 
 
 
-                //kick all btn 
-                let kickAllBTN = document.createElement('button')
-                kickAllBTN.innerText = 'ВИКИНУТИ ВСІХ'
-                kickAllBTN.style.color = 'red'
-                
-                kickAllBTN.addEventListener('click',()=>{
-                    kickAll(confNumber)
-                })
-                preElement.append(kickAllBTN)
+    }, 1000)
 
 
-
-    },1000)
-
-    
 }
 
 
