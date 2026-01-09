@@ -1,0 +1,122 @@
+*{
+    padding:0px;
+    margin:0px;
+}
+
+
+
+#lazyAsterisk{
+    width: full;
+    display: flex;
+    flex-direction: column;
+}
+
+.loadExtension{
+    background-color: blue;
+    color: white;
+    border-radius: 25%;
+    border: none;
+
+}
+
+.controlButtons{
+}
+
+.loadExtensions{
+	background-color:#2ea44f;
+	border-radius:6px;
+	color:white;
+	font-weight:700;
+	border:1px,solid,#fff;
+	padding:5px;	
+}
+
+.loadExtensions:hover{
+	background-color:#fff;
+	border-radius:6px;
+	color:#2ea44f;
+	font-weight:700;
+	border:1px,solid,#2ea44f;
+	padding:5px;	
+}
+
+.loadConfs{
+	background-color:#2ea44f;
+	border-radius:6px;
+	color:white;
+	font-weight:700;
+	border:1px,solid,#fff;
+	padding:5px;	
+}
+
+.loadConfs:hover{
+	background-color:#fff;
+	border-radius:6px;
+	color:#2ea44f;
+	font-weight:700;
+	border:1px,solid,#2ea44f;
+	padding:5px;	
+}
+
+
+.onRepeat{
+	background-color:#0095ff;
+	border-radius:6px;
+	color:white;
+	font-weight:700;
+	border:1px,solid,#fff;
+	padding:5px;	
+}
+
+.onRepeat:hover{
+	background-color:#fff;
+	border-radius:6px;
+	color:#0095ff;
+	font-weight:700;
+	border:1px,solid,#0095ff;
+	padding:5px;	
+}
+
+.showCalls{
+	background-color:#2ea44f;
+	border-radius:6px;
+	color:white;
+	font-weight:700;
+	border:1px,solid,#fff;
+	padding:5px;	
+}
+
+.showCalls:hover{
+	background-color:#fff;
+	border-radius:6px;
+	color:#2ea44f;
+	font-weight:700;
+	border:1px,solid,#2ea44f;
+	padding:5px;
+}
+
+
+.showCallsDetailed{
+	background-color:#2ea44f;
+	border-radius:6px;
+	color:white;
+	font-weight:700;
+	border:1px,solid,#fff;
+	padding:5px;		
+}
+
+.showCallsDetailed:hover{
+	background-color:#fff;
+	border-radius:6px;
+	color:#2ea44f;
+	font-weight:700;
+	border:1px,solid,#2ea44f;
+	padding:5px;	
+}
+
+
+
+
+.test{
+}
+

@@ -1,0 +1,18 @@
+{
+  "name": "Астеріск для лінивих",
+  "version": "0.01",
+  "manifest_version": 3,
+  "permissions": ["activeTab", "scripting"],	
+  "host_permissions": ["activeTab"],
+  "content_scripts": [
+    {
+      "matches": ["http://192.168.0.200/admin/config.php?display=cli*"],
+      "css":["style.css"],
+      "js": ["utils.js","main.js"]
+    }
+  ],
+  "icons": {
+    "128": "/img/tango.png",
+    "16": "/img/tango.png"
+  }
+}
