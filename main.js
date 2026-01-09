@@ -37,6 +37,32 @@ function showCalls() {
 
 function showCallsDetailed() {
     sendQuery('core show channels verbose')
+
+    setTimeout(() => {
+        let preElement = document.querySelectorAll('pre')[2]
+
+        // regex to find SIP/xxxxx...
+        const regex = /(SIP\/[^\s]+)/
+
+        let lines = preElement.innerHTML.split('\n')
+
+        let newLines = lines.map(line => {
+            return line.replace(regex, (match) => {
+                return `<button class="generated-hangup-btn" data-sip="${match}" style="margin-right: 5px; cursor: pointer;">hangup</button>${match}`
+            })
+        })
+
+        preElement.innerHTML = newLines.join('\n')
+
+        // Add event listeners to the new buttons
+        preElement.querySelectorAll('.generated-hangup-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const sipId = e.target.dataset.sip
+                sendQuery('channel request hangup', sipId)
+            })
+        })
+
+    }, 1000)
 }
 
 
