@@ -1,6 +1,6 @@
 {
   "name": "Астеріск для лінивих",
-  "version": "0.01",
+  "version": "0.2",
   "manifest_version": 3,
   "permissions": ["activeTab", "scripting"],	
   "host_permissions": ["activeTab"],
