@@ -20,7 +20,7 @@ function kickAll(confNumber) {
 //kick one extension
 function kickOne(confNumber, sipNumber,) {
     sendQuery('confbridge kick ', confNumber, sipNumber)
-    setTimeout(() => loadOneConf(confNumber), 1000)
+    setTimeout(() => loadOneConf(confNumber), 2000)
 }
 
 function showPeerInfo(sipNumber) {
@@ -185,52 +185,53 @@ function loadAllConfs() {
 
 // shoots when exact conf is selected, 1 sec delay
 function loadOneConf(confNumber) {
+    // Clear the output buffer to avoid duplicates
+    document.querySelectorAll('pre')[2].innerHTML = ''
+
     sendQuery('confbridge list ', confNumber)
 
     setTimeout(() => {
 
         let preElement = document.querySelectorAll('pre')[2]
 
+        // Remove existing buttons (including old kick buttons and kick-all)
         preElement.querySelectorAll('button').forEach(btn => btn.remove())
 
         preElement.style.maxWidth = '90vw'
 
+        // regex to find SIP/xxxxx...
+        const regex = /(SIP\/[^\s]+)/
 
+        let lines = preElement.innerHTML.split('\n')
 
-        const regex = /SIP\/[^\s]+/g
+        let newLines = lines.map(line => {
+            return line.replace(regex, (match) => {
+                return `<button class="generated-kick-btn" data-sip="${match}" style="margin-right: 5px; cursor: pointer;">kick</button>${match}`
+            })
+        })
 
-        let matches = [...preElement.textContent.matchAll(regex)]
+        preElement.innerHTML = newLines.join('\n')
 
-        // Fix: Deduplicate matches to prevent multiple buttons for the same SIP peer
-        let uniqueMatches = [...new Set(matches.map(m => m[0]))]
+        // Add event listeners to the inline kick buttons
+        preElement.querySelectorAll('.generated-kick-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const sipId = e.target.dataset.sip
+                kickOne(confNumber, sipId)
+                // We keep the reloading logic that was inside kickOne, so no extra reload needed here
+            })
+        })
 
-        const fragment = document.createDocumentFragment();
-
-        for (let match of uniqueMatches) {
-            let btn = document.createElement('button');
-            btn.dataset.id = match;
-            btn.innerText = `kick ${match}`; // Use innerText to match original
-            btn.addEventListener('click', () => {
-                kickOne(confNumber, match);
-                // Clear buttons after click as per original logic
-                preElement.querySelectorAll('button').forEach(btn => btn.remove());
-            });
-            fragment.appendChild(btn);
-        }
-
-        // kick all btn 
+        // Re-add "Kick All" button at the bottom
         let kickAllBTN = document.createElement('button')
         kickAllBTN.innerText = 'ВИКИНУТИ ВСІХ'
         kickAllBTN.style.color = 'red'
+        kickAllBTN.style.marginTop = '10px'
+        kickAllBTN.style.display = 'block'
 
         kickAllBTN.addEventListener('click', () => {
             kickAll(confNumber)
         })
-        fragment.appendChild(kickAllBTN)
-
-        preElement.appendChild(fragment)
-
-
+        preElement.appendChild(kickAllBTN)
 
     }, 1000)
 
