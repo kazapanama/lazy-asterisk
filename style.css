@@ -120,3 +120,61 @@
 .test{
 }
 
+
+/* --- Підсвітка тексту в pre[2] (стійка до повтору кожні 5с) --- */
+
+.highlightRow{
+	display:flex;
+	align-items:center;
+	gap:6px;
+	margin-top:8px;
+	margin-bottom:4px;
+}
+
+.highlightRow label{
+	font-weight:700;
+	font-size:13px;
+	color:#333;
+}
+
+#highlightInput{
+	flex:1;
+	padding:5px 8px;
+	border:1px solid #bbb;
+	border-radius:6px;
+	font-family:Consolas,monospace;
+	font-size:13px;
+	min-width:180px;
+}
+
+#highlightInput:focus{
+	outline:2px solid #ffeb3b;
+	outline-offset:-1px;
+	border-color:#ffb300;
+}
+
+.clearHighlight{
+	background:#eee;
+	border:1px solid #bbb;
+	border-radius:6px;
+	cursor:pointer;
+	padding:4px 10px;
+	font-weight:700;
+	color:#555;
+	font-size:14px;
+	line-height:1;
+}
+
+.clearHighlight:hover{
+	background:#ddd;
+	color:#000;
+}
+
+mark.lazy-highlight{
+	background:#ffeb3b;
+	color:#000;
+	font-weight:700;
+	padding:0 2px;
+	border-radius:2px;
+	box-shadow:0 0 0 1px rgba(0,0,0,.2);
+}

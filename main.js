@@ -9,6 +9,9 @@ let isOnRepeat = false
 let repeater
 let repeatButton
 
+let highlightInput
+let highlightObserver
+
 
 
 
@@ -41,6 +44,10 @@ function showCallsDetailed() {
     setTimeout(() => {
         let preElement = document.querySelectorAll('pre')[2]
 
+        // Зняти підсвітку ПЕРЕД читанням innerHTML, інакше regex захопить теги <mark>
+        // і data-sip у hangup-кнопці буде поламаний. Observer верне підсвітку після нашого запису.
+        unwrapHighlights(preElement)
+
         // regex to find SIP/xxxxx...
         const regex = /(SIP\/[^\s]+)/
 
@@ -69,6 +76,79 @@ function showCallsDetailed() {
 
 
 
+// --- Highlight helpers ---
+// Підсвічує входження тексту з #highlightInput у pre[2] обгортанням <mark>.
+// Викликається на input у полі та з MutationObserver — щоб переживати
+// перерендери (відповідь FreePBX, повтор кожні 5с, інжект kick/hangup кнопок).
+
+function escapeRegex(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Розгортає всі <mark.lazy-highlight> назад у текст. ВАЖЛИВО: викликати ПЕРЕД
+// будь-яким читанням pre[2].innerHTML у loadOneConf / showCallsDetailed —
+// інакше regex /(SIP\/[^\s]+)/ захопить разом з тегами <mark> і поламає data-sip.
+function unwrapHighlights(root) {
+    if (!root) return
+    const marks = root.querySelectorAll('mark.lazy-highlight')
+    marks.forEach(mark => {
+        const parent = mark.parentNode
+        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark)
+        parent.removeChild(mark)
+    })
+    if (marks.length > 0) root.normalize()
+}
+
+function applyHighlight() {
+    const pre = document.querySelectorAll('pre')[2]
+    if (!pre || !highlightInput) return
+
+    // Відключаємо observer на час власної мутації — інакше нескінченний цикл.
+    if (highlightObserver) highlightObserver.disconnect()
+
+    try {
+        unwrapHighlights(pre)
+        const query = highlightInput.value
+        if (!query) return
+
+        const regex = new RegExp(escapeRegex(query), 'gi')
+        const textNodes = []
+        const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT)
+        let n
+        while ((n = walker.nextNode())) textNodes.push(n)
+
+        for (const textNode of textNodes) {
+            const text = textNode.nodeValue
+            regex.lastIndex = 0
+            if (!regex.test(text)) continue
+
+            regex.lastIndex = 0
+            const fragment = document.createDocumentFragment()
+            let lastIdx = 0
+            let m
+            while ((m = regex.exec(text)) !== null) {
+                if (m.index > lastIdx) {
+                    fragment.appendChild(document.createTextNode(text.slice(lastIdx, m.index)))
+                }
+                const mark = document.createElement('mark')
+                mark.className = 'lazy-highlight'
+                mark.textContent = m[0]
+                fragment.appendChild(mark)
+                lastIdx = m.index + m[0].length
+                if (m[0].length === 0) regex.lastIndex++ // safeguard від zero-width
+            }
+            if (lastIdx < text.length) {
+                fragment.appendChild(document.createTextNode(text.slice(lastIdx)))
+            }
+            textNode.parentNode.replaceChild(fragment, textNode)
+        }
+    } finally {
+        if (highlightObserver && pre) {
+            highlightObserver.observe(pre, { childList: true, characterData: true, subtree: true })
+        }
+    }
+}
+
 //shoots at the start
 function initExtension() {
 
@@ -96,6 +176,11 @@ function initExtension() {
                 <button class="onRepeat">
                     Відправляти раз в 5 секунд
                 </button>
+            </div>
+            <div class="highlightRow">
+                <label for="highlightInput">Підсвітити в виводі:</label>
+                <input id="highlightInput" type="text" placeholder="напр., 200 або SIP/200 — стійко до повтору кожні 5с">
+                <button class="clearHighlight" title="Очистити підсвітку">×</button>
             </div>
             <div class="ext-output">
 
@@ -141,6 +226,23 @@ function initExtension() {
         }
 
     })
+
+    // --- Підсвітка тексту в pre[2] ---
+    highlightInput = document.getElementById('highlightInput')
+    highlightInput.addEventListener('input', applyHighlight)
+
+    document.querySelector('.clearHighlight').addEventListener('click', () => {
+        highlightInput.value = ''
+        applyHighlight()
+    })
+
+    // Спостерігаємо за pre[2]: на кожну зміну (відповідь FreePBX, інтервал
+    // кожні 5с, інжект kick/hangup кнопок) переалоковуємо підсвітку.
+    const pre2 = document.querySelectorAll('pre')[2]
+    if (pre2 && typeof MutationObserver !== 'undefined') {
+        highlightObserver = new MutationObserver(() => applyHighlight())
+        highlightObserver.observe(pre2, { childList: true, characterData: true, subtree: true })
+    }
 
 }
 
@@ -193,6 +295,9 @@ function loadOneConf(confNumber) {
     setTimeout(() => {
 
         let preElement = document.querySelectorAll('pre')[2]
+
+        // Зняти підсвітку ПЕРЕД читанням innerHTML — див. коментар у showCallsDetailed.
+        unwrapHighlights(preElement)
 
         // Remove existing buttons (including old kick buttons and kick-all)
         preElement.querySelectorAll('button').forEach(btn => btn.remove())

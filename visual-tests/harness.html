@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <title>Lazy Extension — Тест-сцена</title>
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 0; padding: 12px; background: #ebeef2; color: #1f2937; }
+    .harness-bar { background: #1f2937; color: white; padding: 10px 14px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .harness-bar h1 { margin: 0; font-size: 14px; font-weight: 600; }
+    .harness-bar a { color: #93c5fd; text-decoration: none; font-size: 12px; }
+    .harness-bar a:hover { text-decoration: underline; }
+    .harness-bar .scenario-tag { background: #374151; color: #d1d5db; font-size: 11px; padding: 3px 8px; border-radius: 12px; }
+    .harness-controls { background: white; padding: 10px 14px; border-radius: 8px; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; font-size: 12px; }
+    .harness-controls fieldset { border: 1px solid #d1d5db; border-radius: 6px; padding: 4px 10px 6px; margin: 0; }
+    .harness-controls legend { font-weight: 600; padding: 0 4px; color: #374151; font-size: 11px; }
+    .harness-controls label { margin-right: 8px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+    .harness-controls .reset-btn { margin-left: auto; padding: 4px 10px; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer; font-size: 11px; color: #374151; }
+    .harness-controls .reset-btn:hover { background: #e5e7eb; }
+    .freepbx-stage { background: #fafafa; padding: 14px; border-radius: 8px; margin-top: 10px; border: 1px dashed #cbd5e1; }
+    .freepbx-stage > .stage-label { color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+    .freepbx-stage .cli-toolbar { display: flex; gap: 6px; align-items: center; margin: 10px 0; }
+    .freepbx-stage .cli-toolbar label { color: #64748b; font-size: 11px; }
+    .freepbx-stage #astcmd { flex: 1; padding: 4px 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-family: Consolas, monospace; font-size: 12px; }
+    .freepbx-stage #send { padding: 4px 14px; background: #475569; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .freepbx-stage #send:hover { background: #334155; }
+    .freepbx-stage pre { background: #0f172a; color: #d1fae5; padding: 8px 10px; border-radius: 4px; font-family: Consolas, monospace; font-size: 12px; min-height: 1em; overflow-x: auto; margin-top: 6px; white-space: pre-wrap; word-break: break-all; }
+    .freepbx-stage pre.placeholder-pre { background: #f1f5f9; color: #94a3b8; font-style: italic; }
+    .freepbx-stage pre#cli-output { min-height: 60px; }
+    .cmd-log { background: #0b1220; color: #e5e7eb; font-family: Consolas, monospace; font-size: 12px; padding: 10px 14px; border-radius: 8px; margin-top: 10px; max-height: 280px; overflow-y: auto; }
+    .cmd-log .log-line { padding: 4px 0; border-bottom: 1px dotted rgba(255,255,255,.08); }
+    .cmd-log .log-line:last-child { border-bottom: none; }
+    .cmd-log .log-cmd { color: #fbbf24; }
+    .cmd-log .log-resp { color: #6ee7b7; white-space: pre; padding-left: 1.5em; display: block; font-size: 11px; opacity: .85; }
+    .cmd-log .log-title { color: #cbd5e1; font-weight: 600; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+    .scenario-banner { background: #fef3c7; color: #92400e; padding: 8px 12px; border-radius: 6px; font-size: 12px; margin-top: 10px; display: none; }
+    .scenario-banner.show { display: block; }
+    button { font-family: inherit; }
+  </style>
+</head>
+<body>
+  <div class="harness-bar">
+    <h1>Lazy Extension — Тест-сцена</h1>
+    <span id="scenarioTag" class="scenario-tag">сценарій: довільний</span>
+    <a href="index.html">← усі сценарії</a>
+  </div>
+
+  <div class="harness-controls">
+    <fieldset>
+      <legend>Конференції (для <code>confbridge list</code>)</legend>
+      <label><input type="radio" name="conf-scenario" value="multi" checked> 2 активні</label>
+      <label><input type="radio" name="conf-scenario" value="single"> 1 активна</label>
+      <label><input type="radio" name="conf-scenario" value="none"> 0</label>
+    </fieldset>
+    <fieldset>
+      <legend>Дзвінки (для <code>core show channels [verbose]</code>)</legend>
+      <label><input type="radio" name="calls-scenario" value="multi" checked> 2 активні</label>
+      <label><input type="radio" name="calls-scenario" value="none"> 0</label>
+    </fieldset>
+    <button id="resetMock" class="reset-btn" title="Повернути всіх кикнутих учасників на місце">↺ Скинути стан моку</button>
+  </div>
+
+  <div id="scenarioBanner" class="scenario-banner"></div>
+
+  <!--
+    Це мок-копія DOM-у FreePBX. Розширення розраховує саме на таку структуру:
+      • два .container-fluid (панель prepend-иться у другий)
+      • три <pre> (вивід CLI читається з pre[2])
+      • input#astcmd та button#send
+  -->
+  <div class="container-fluid">
+    <div style="color:#94a3b8; font-size:11px; text-transform:uppercase; letter-spacing:.08em; padding:6px 0;">.container-fluid [0] — на справжній FreePBX тут шапка</div>
+  </div>
+
+  <div class="container-fluid freepbx-stage">
+    <div class="stage-label">.container-fluid [1] — extension prepend-ить свою панель сюди ↓</div>
+
+    <div class="cli-toolbar">
+      <label>CLI:</label>
+      <input id="astcmd" type="text" placeholder="(тут з'явиться команда, яку надішле розширення)">
+      <button id="send">Send</button>
+    </div>
+
+    <pre class="placeholder-pre">pre[0] — заглушка</pre>
+    <pre class="placeholder-pre">pre[1] — заглушка</pre>
+    <pre id="cli-output">pre[2] — сюди мок пише відповідь Asterisk</pre>
+  </div>
+
+  <div class="cmd-log" id="cmdLog">
+    <div class="log-title">Лог надісланих команд</div>
+  </div>
+
+  <!--
+    Порядок завантаження критичний:
+    1) harness-mock.js — реєструє click-listener на #send ДО того, як main.js спрацює
+    2) utils.js і main.js — реальні файли розширення (classic scripts, спільний script-scope)
+    3) harness-init.js — читає ?scenario=… й автоклікає кнопки розширення
+  -->
+  <script src="harness-mock.js"></script>
+  <script src="../utils.js"></script>
+  <script src="../main.js"></script>
+  <script src="harness-init.js"></script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <title>Lazy Extension — Візуальні тести</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; max-width: 880px; margin: 32px auto; padding: 0 20px; background: #f5f6f8; color: #1f2937; }
+    h1 { font-size: 22px; margin-bottom: 4px; }
+    p.lede { color: #6b7280; margin-top: 0; font-size: 14px; }
+    p.lede code { background: #eef2ff; padding: 1px 5px; border-radius: 3px; font-size: 12px; color: #3730a3; }
+    ul.scenarios { list-style: none; padding: 0; margin-top: 18px; }
+    ul.scenarios li { background: white; border-radius: 8px; padding: 14px 18px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(15,23,42,.06); border: 1px solid #e5e7eb; }
+    ul.scenarios li:hover { border-color: #93c5fd; }
+    ul.scenarios a.title { font-weight: 600; color: #2563eb; text-decoration: none; font-size: 15px; }
+    ul.scenarios a.title:hover { text-decoration: underline; }
+    ul.scenarios .desc { display: block; color: #6b7280; font-size: 13px; margin-top: 4px; }
+    ul.scenarios .badge { display: inline-block; background: #fef3c7; color: #92400e; font-size: 10px; padding: 2px 6px; border-radius: 10px; text-transform: uppercase; letter-spacing: .04em; vertical-align: middle; margin-left: 6px; }
+    .footer { color: #9ca3af; font-size: 12px; margin-top: 24px; line-height: 1.6; }
+    .footer code { background: #eef2ff; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1>Lazy Extension — Візуальні тести</h1>
+  <p class="lede">Кожен сценарій відкриває мок-сторінку FreePBX, на яку завантажуються реальні <code>utils.js</code> + <code>main.js</code>. Інтерактивно клікайте кнопки розширення й дивіться, як рендериться UI.</p>
+
+  <ul class="scenarios">
+    <li>
+      <a class="title" href="harness.html">1. Початковий стан</a>
+      <span class="desc">Панель розширення вставлена в другий <code>.container-fluid</code>. Жодну команду ще не надіслано — це чистий вигляд після <code>initExtension()</code>.</span>
+    </li>
+    <li>
+      <a class="title" href="harness.html?scenario=confs-multi">2. Список конференцій (2 активні)</a>
+      <span class="desc">Автоклік «Завантажити конференції» → мок відповідає переліком конф 5500/5501 → з'являється dropdown.</span>
+    </li>
+    <li>
+      <a class="title" href="harness.html?scenario=confs-empty">3. Список конференцій (порожньо)</a>
+      <span class="desc">Мок відповідає «No active conferences» → має з'явитися попередження «Заз немає конференцій :(».</span>
+    </li>
+    <li>
+      <a class="title" href="harness.html?scenario=one-conf">4. Конференція з учасниками</a>
+      <span class="desc">Завантажує конф 5500 → у <code>pre[2]</code> з'являються inline-кнопки <code>kick</code> перед кожним SIP-ID + червона «ВИКИНУТИ ВСІХ» внизу.</span>
+    </li>
+    <li>
+      <a class="title" href="harness.html?scenario=calls">5. Базовий список дзвінків</a>
+      <span class="desc">Автоклік «Показати дзвінки» → <code>core show channels</code>, вивід без кнопок.</span>
+    </li>
+    <li>
+      <a class="title" href="harness.html?scenario=calls-detailed">6. Детальний список дзвінків з hangup-кнопками</a>
+      <span class="desc">Автоклік «Показати дзвінки (детальніше)» → SIP-канали отримують inline-кнопки <code>hangup</code>.</span>
+    </li>
+    <li>
+      <a class="title" href="harness.html?scenario=repeat">7. Режим повторення <span class="badge">interval</span></a>
+      <span class="desc">Автоклік «Відправляти раз в 5 секунд» → лейбл змінюється на «Перестати повторювати», додається CSS-клас <code>.test</code>, стартує <code>setInterval(5000)</code>.</span>
+    </li>
+    <li>
+      <a class="title" href="harness.html?scenario=highlight">8. Підсвітка тексту в виводі</a>
+      <span class="desc">У поле «Підсвітити в виводі» вписано «200», натиснуто «Показати дзвінки (детальніше)» → жовтим виділяються всі входження «200» у <code>pre[2]</code>, включно з hangup-кнопками.</span>
+    </li>
+    <li>
+      <a class="title" href="harness.html?scenario=highlight-repeat">9. Підсвітка + повтор 5с <span class="badge">регресія</span></a>
+      <span class="desc">Це сценарій, заради якого фічу й додали. Підсвітка «200» залишається жовтою навіть після того, як <code>setInterval(5000)</code> перерендерює <code>pre[2]</code> — на відміну від <kbd>Ctrl</kbd>+<kbd>F</kbd>, який скидається.</span>
+    </li>
+  </ul>
+
+  <div class="footer">
+    Запуск: подвійний клік по <code>visual-tests.bat</code> у корені проєкту (або відкрийте цей файл напряму).<br>
+    На сцені працює мок FreePBX: коли розширення клікає <code>#send</code>, перехоплюємо та пишемо відповідь у <code>pre[2]</code>, як на справжньому FreePBX.
+  </div>
+</body>
+</html>
