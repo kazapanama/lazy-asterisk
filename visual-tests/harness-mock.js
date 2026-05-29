@@ -46,6 +46,18 @@
     return document.querySelectorAll('pre')[2];
   }
 
+  // Пише відповідь, ЗАМІНЮЮЧИ сам <pre> новим node-ом — саме так поводиться
+  // реальний FreePBX (container.innerHTML = response), а не оновлює textContent.
+  // Це навмисно: лише так harness відтворює баг, через який підсвітка раніше
+  // "вмирала" після першого перерендеру (observer був прив'язаний до старого node).
+  function setOutput(response) {
+    const old = getOutputPre();
+    const fresh = document.createElement('pre');
+    if (old.id) fresh.id = old.id;
+    fresh.textContent = response;
+    old.parentNode.replaceChild(fresh, old);
+  }
+
   function logCmd(rawCmd, response) {
     const line = document.createElement('div');
     line.className = 'log-line';
@@ -189,13 +201,13 @@
     const raw = cmdInput.value;
     if (!raw.trim()) return;
     const response = generateResponse(raw);
-    getOutputPre().textContent = response;
+    setOutput(response);
     logCmd(raw, response);
   });
 
   document.getElementById('resetMock').addEventListener('click', () => {
     users = cloneUsers();
-    getOutputPre().textContent = 'pre[2] — стан моку скинуто';
+    setOutput('pre[2] — стан моку скинуто');
     const line = document.createElement('div');
     line.className = 'log-line';
     const span = document.createElement('span');

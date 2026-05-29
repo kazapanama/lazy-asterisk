@@ -406,6 +406,31 @@ describe('highlight', () => {
     expect(marks[0].textContent).toBe('(bar)')
   })
 
+  test('re-applies highlight when the <pre> NODE itself is replaced (the real FreePBX repeat bug)', async () => {
+    const { window, document } = bootDOM()
+    const input = document.getElementById('highlightInput')
+    const pres = document.querySelectorAll('pre')
+
+    input.value = '200'
+    input.dispatchEvent(new window.Event('input'))
+
+    // FreePBX does NOT mutate textContent — it swaps the whole <pre> for a fresh node
+    // (e.g. container.innerHTML = response). An observer bound to the old node would die here.
+    const oldPre = pres[2]
+    const newPre = document.createElement('pre')
+    newPre.textContent = 'After repeat: SIP/200-zzz at 09:20:00\n'
+    oldPre.parentNode.replaceChild(newPre, oldPre)
+
+    await new Promise((r) => setTimeout(r, 0))
+
+    // The observer (on document.body) must catch the node swap and highlight the NEW pre.
+    const fresh = document.querySelectorAll('pre')[2]
+    expect(fresh).toBe(newPre)
+    const marks = fresh.querySelectorAll('mark.lazy-highlight')
+    expect(marks).toHaveLength(1)
+    expect(marks[0].textContent).toBe('200')
+  })
+
   test('MutationObserver re-applies highlight when pre[2] is rewritten (simulates the 5s repeat)', async () => {
     const { window, document } = bootDOM()
     const input = document.getElementById('highlightInput')

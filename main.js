@@ -147,8 +147,11 @@ function applyHighlight() {
             textNode.parentNode.replaceChild(fragment, textNode)
         }
     } finally {
-        if (highlightObserver && pre) {
-            highlightObserver.observe(pre, { childList: true, characterData: true, subtree: true })
+        // Спостерігаємо за document.body, а НЕ за pre[2]: FreePBX при відправці нової
+        // команди замінює сам елемент <pre> новим node-ом, тож підписка на конкретний
+        // pre помирає після першого ж перерендеру. body завжди в DOM і ніколи не зникає.
+        if (highlightObserver) {
+            highlightObserver.observe(document.body, { childList: true, characterData: true, subtree: true })
         }
     }
 }
@@ -307,12 +310,14 @@ function initExtension() {
         applyHighlight()
     })
 
-    // Спостерігаємо за pre[2]: на кожну зміну (відповідь FreePBX, інтервал
-    // кожні 5с, інжект kick/hangup кнопок) переалоковуємо підсвітку.
-    const pre2 = document.querySelectorAll('pre')[2]
-    if (pre2 && typeof MutationObserver !== 'undefined') {
+    // Спостерігаємо за document.body: на кожну зміну DOM (відповідь FreePBX після
+    // будь-якої відправленої команди, інтервал повтору, інжект kick/hangup кнопок)
+    // переалоковуємо підсвітку. Слухаємо body, бо FreePBX замінює сам <pre> цілком —
+    // підписка на конкретний node жила б лише до першого перерендеру.
+    // attributes НЕ слухаємо → style-зміни прогресбару не тригерять зайвих проходів.
+    if (typeof MutationObserver !== 'undefined') {
         highlightObserver = new MutationObserver(() => applyHighlight())
-        highlightObserver.observe(pre2, { childList: true, characterData: true, subtree: true })
+        highlightObserver.observe(document.body, { childList: true, characterData: true, subtree: true })
     }
 
 }
