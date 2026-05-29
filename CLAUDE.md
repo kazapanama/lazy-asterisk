@@ -57,7 +57,11 @@ Two spaces between each part. `number` and `optional` default to `' '` (a single
 
 ## Repeat mode
 
-`.onRepeat` toggles a `setInterval` that re-clicks `buttonCLI` every 5000 ms (re-sends whatever is in `#astcmd`). State lives in module-level `let isOnRepeat`, `let repeater`. The button label and the `.test` CSS class flip on each toggle.
+`.onRepeat` toggles a `setInterval` that re-clicks `buttonCLI` every `repeatSeconds * 1000` ms (re-sends whatever is in `#astcmd`). State lives in module-level `let isOnRepeat`, `let repeater`, `let repeatSeconds` (default 5). The `.test` CSS class flips on each toggle (violet pulsing active state).
+
+- **Interval stepper:** `.repeatMinus` / `.repeatPlus` call `adjustRepeat(±1)`, clamped to a **1s minimum**. Adjusting **while active** tears down and rebuilds the interval via `startRepeater()` so the new cadence (and progress-bar speed) take effect immediately.
+- **Dynamic label:** `updateRepeatLabel()` is the single source of truth — `Перестати повторювати` while active, otherwise `Відправляти раз в <N> <pluralizeSeconds(N)>`. `pluralizeSeconds` applies Ukrainian plural rules (1 секунду / 2-4 секунди / 5+ секунд). Called at init and on every toggle/adjust.
+- **Countdown bar:** `.repeatProgress` / `.repeatProgress-fill` is shown only while active (`.active` class). `kickRepeatProgress()` resets width to 0% then animates to 100% over `repeatSeconds`s on every tick. **The `void offsetWidth` reflow between the two width writes is mandatory** — without it the browser coalesces both style mutations and the transition never runs.
 
 ## Tests
 

@@ -85,6 +85,137 @@ describe('onRepeat toggle', () => {
   })
 })
 
+describe('repeat interval stepper (− / + buttons)', () => {
+  const label = (btn) => (btn.innerText ?? btn.textContent).trim()
+
+  test('the − / + buttons exist and sit BEFORE the onRepeat button', () => {
+    const { document } = bootDOM()
+    expect(document.querySelector('.repeatMinus')).not.toBeNull()
+    expect(document.querySelector('.repeatPlus')).not.toBeNull()
+
+    const buttons = Array.from(document.querySelectorAll('.controlButtons button'))
+    const minusIdx = buttons.findIndex((b) => b.classList.contains('repeatMinus'))
+    const plusIdx = buttons.findIndex((b) => b.classList.contains('repeatPlus'))
+    const repeatIdx = buttons.findIndex((b) => b.classList.contains('onRepeat'))
+    expect(minusIdx).toBeLessThan(repeatIdx)
+    expect(plusIdx).toBeLessThan(repeatIdx)
+  })
+
+  test('+ bumps the interval; idle label reflects it', () => {
+    const { document } = bootDOM()
+    const btn = document.querySelector('.onRepeat')
+    expect(label(btn)).toBe('Відправляти раз в 5 секунд')
+
+    document.querySelector('.repeatPlus').click() // 6
+    expect(label(btn)).toBe('Відправляти раз в 6 секунд')
+  })
+
+  test('− produces correct Ukrainian plurals and clamps at 1s minimum', () => {
+    const { document } = bootDOM()
+    const btn = document.querySelector('.onRepeat')
+    const minus = document.querySelector('.repeatMinus')
+
+    minus.click() // 4
+    expect(label(btn)).toBe('Відправляти раз в 4 секунди')
+    minus.click() // 3
+    expect(label(btn)).toBe('Відправляти раз в 3 секунди')
+    minus.click() // 2
+    expect(label(btn)).toBe('Відправляти раз в 2 секунди')
+    minus.click() // 1
+    expect(label(btn)).toBe('Відправляти раз в 1 секунду')
+    minus.click() // clamp — stays at 1
+    expect(label(btn)).toBe('Відправляти раз в 1 секунду')
+  })
+
+  test('adjusting while IDLE does not start an interval', () => {
+    const { document, pendingIntervals } = bootDOM()
+    document.querySelector('.repeatPlus').click()
+    expect(pendingIntervals()).toHaveLength(0)
+  })
+
+  test('adjusting while ACTIVE rebuilds the interval with new ms and restarts the bar', () => {
+    const { document, pendingIntervals } = bootDOM()
+    const btn = document.querySelector('.onRepeat')
+    const fill = document.querySelector('.repeatProgress-fill')
+
+    btn.click() // start at 5s
+    expect(pendingIntervals()).toHaveLength(1)
+    expect(pendingIntervals()[0].ms).toBe(5000)
+
+    document.querySelector('.repeatPlus').click() // → 6s, rebuild
+    const intervals = pendingIntervals()
+    expect(intervals).toHaveLength(1) // old cleared, exactly one new
+    expect(intervals[0].ms).toBe(6000)
+    expect(fill.style.transition).toMatch(/width 6s linear/)
+
+    // label stays "Перестати повторювати" while active
+    expect(label(btn)).toBe('Перестати повторювати')
+  })
+})
+
+describe('repeat progress bar', () => {
+  test('the bar + fill are present in the panel but hidden by default', () => {
+    const { document } = bootDOM()
+    const bar = document.querySelector('.repeatProgress')
+    const fill = document.querySelector('.repeatProgress-fill')
+    expect(bar).not.toBeNull()
+    expect(fill).not.toBeNull()
+    expect(bar.classList.contains('active')).toBe(false)
+  })
+
+  test('starting repeat: bar becomes .active and fill is set to 100% with a 5s linear transition', () => {
+    const { document } = bootDOM()
+    const btn = document.querySelector('.onRepeat')
+    const bar = document.querySelector('.repeatProgress')
+    const fill = document.querySelector('.repeatProgress-fill')
+
+    btn.click()
+
+    expect(bar.classList.contains('active')).toBe(true)
+    expect(fill.style.width).toBe('100%')
+    expect(fill.style.transition).toMatch(/width 5s linear/)
+  })
+
+  test('stopping repeat: bar loses .active and fill is reset to 0% with no transition', () => {
+    const { document } = bootDOM()
+    const btn = document.querySelector('.onRepeat')
+    const bar = document.querySelector('.repeatProgress')
+    const fill = document.querySelector('.repeatProgress-fill')
+
+    btn.click() // start
+    btn.click() // stop
+
+    expect(bar.classList.contains('active')).toBe(false)
+    expect(fill.style.width).toBe('0%')
+    expect(fill.style.transition).toBe('none')
+  })
+
+  test('interval callback re-kicks the bar (resets and re-fills) AND clicks #send', () => {
+    const { document, pendingIntervals } = bootDOM()
+    const btn = document.querySelector('.onRepeat')
+    const fill = document.querySelector('.repeatProgress-fill')
+    const send = document.getElementById('send')
+
+    let sendClicks = 0
+    send.addEventListener('click', () => sendClicks++)
+
+    btn.click()
+
+    const interval = pendingIntervals()[0]
+    expect(interval).toBeDefined()
+    expect(interval.ms).toBe(5000)
+
+    // Simulate one interval tick
+    interval.fn()
+
+    // After tick: send was clicked AND fill is back to 100% with 5s transition
+    // (the intermediate 0% is overwritten in the same synchronous block, so end state is 100%).
+    expect(sendClicks).toBe(1)
+    expect(fill.style.width).toBe('100%')
+    expect(fill.style.transition).toMatch(/width 5s linear/)
+  })
+})
+
 describe('loadAllConfs', () => {
   test('renders a select with every conference number found in pre[2]', () => {
     const { window, document, flushTimeouts } = bootDOM()

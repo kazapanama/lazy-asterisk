@@ -12,6 +12,10 @@ let repeatButton
 let highlightInput
 let highlightObserver
 
+let repeatProgress
+let repeatProgressFill
+let repeatSeconds = 5
+
 
 
 
@@ -149,6 +153,56 @@ function applyHighlight() {
     }
 }
 
+// Прогресбар відліку до наступного автоматичного надсилання.
+// Викликається на старті повтору і на кожному tick-у setInterval.
+// Тривалість анімації = repeatSeconds (синхронно з фактичним інтервалом).
+//
+// КРИТИЧНО: між двома присвоєннями `width` потрібен `void offsetWidth` —
+// інакше браузер злиє обидві мутації стилю в одну (фінальну) і transition
+// не запуститься. Без цього reflow бар просто стрибне в 100% без анімації.
+function kickRepeatProgress() {
+    if (!repeatProgressFill) return
+    repeatProgressFill.style.transition = 'none'
+    repeatProgressFill.style.width = '0%'
+    void repeatProgressFill.offsetWidth // форсуємо reflow
+    repeatProgressFill.style.transition = `width ${repeatSeconds}s linear`
+    repeatProgressFill.style.width = '100%'
+}
+
+// Українська множина для слова "секунда": 1 секунду / 2-4 секунди / 5+ секунд.
+function pluralizeSeconds(n) {
+    const mod10 = n % 10
+    const mod100 = n % 100
+    if (mod10 === 1 && mod100 !== 11) return 'секунду'
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'секунди'
+    return 'секунд'
+}
+
+// Єдине джерело правди для напису на кнопці повтору.
+function updateRepeatLabel() {
+    if (!repeatButton) return
+    repeatButton.innerText = isOnRepeat
+        ? 'Перестати повторювати'
+        : `Відправляти раз в ${repeatSeconds} ${pluralizeSeconds(repeatSeconds)}`
+}
+
+// (Пере)запускає інтервал повтору з поточним repeatSeconds і синхронізує прогресбар.
+function startRepeater() {
+    clearInterval(repeater)
+    repeater = setInterval(() => {
+        buttonCLI.click()
+        kickRepeatProgress()
+    }, repeatSeconds * 1000)
+    kickRepeatProgress()
+}
+
+// Коригує інтервал на delta секунд (мінімум 1с). Якщо повтор активний — миттєво перезапускає його.
+function adjustRepeat(delta) {
+    repeatSeconds = Math.max(1, repeatSeconds + delta)
+    updateRepeatLabel()
+    if (isOnRepeat) startRepeater()
+}
+
 //shoots at the start
 function initExtension() {
 
@@ -173,6 +227,10 @@ function initExtension() {
                     Показати дзвінки (детальніше)
                 </button>
 
+                <button class="repeatMinus" title="Зменшити інтервал на 1 секунду">−</button>
+
+                <button class="repeatPlus" title="Збільшити інтервал на 1 секунду">+</button>
+
                 <button class="onRepeat">
                     Відправляти раз в 5 секунд
                 </button>
@@ -184,6 +242,10 @@ function initExtension() {
             </div>
             <div class="ext-output">
 
+            </div>
+
+            <div class="repeatProgress">
+                <div class="repeatProgress-fill"></div>
             </div>
 
 
@@ -211,21 +273,30 @@ function initExtension() {
     //repeat every 5 seconds listener
 
     repeatButton = document.querySelector('.onRepeat')
+    repeatProgress = document.querySelector('.repeatProgress')
+    repeatProgressFill = document.querySelector('.repeatProgress-fill')
 
     repeatButton.addEventListener('click', () => {
         if (isOnRepeat === false) {
             isOnRepeat = true
-            repeater = setInterval(() => buttonCLI.click(), 5000)
-            repeatButton.innerText = 'Перестати повторювати'
+            repeatProgress.classList.add('active')
+            startRepeater()
             repeatButton.classList.add('test')
         } else {
             isOnRepeat = false
             clearInterval(repeater)
-            repeatButton.innerText = 'Відправляти раз в 5 секунд'
+            repeatProgress.classList.remove('active')
+            repeatProgressFill.style.transition = 'none'
+            repeatProgressFill.style.width = '0%'
             repeatButton.classList.remove('test')
         }
-
+        updateRepeatLabel()
     })
+
+    document.querySelector('.repeatMinus').addEventListener('click', () => adjustRepeat(-1))
+    document.querySelector('.repeatPlus').addEventListener('click', () => adjustRepeat(1))
+
+    updateRepeatLabel()
 
     // --- Підсвітка тексту в pre[2] ---
     highlightInput = document.getElementById('highlightInput')

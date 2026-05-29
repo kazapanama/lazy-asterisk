@@ -1,180 +1,302 @@
 *{
-    padding:0px;
-    margin:0px;
+	padding:0;
+	margin:0;
 }
-
-
 
 #lazyAsterisk{
-    width: full;
-    display: flex;
-    flex-direction: column;
+	width:100%;
+	display:flex;
+	flex-direction:column;
+	gap:10px;
+	padding:8px 0;
+	box-sizing:border-box;
+	font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
 }
 
-.loadExtension{
-    background-color: blue;
-    color: white;
-    border-radius: 25%;
-    border: none;
 
-}
+/* ===== Ряд кнопок керування ===== */
 
 .controlButtons{
+	display:flex;
+	flex-wrap:wrap;
+	gap:8px;
+	align-items:center;
 }
 
-.loadExtensions{
-	background-color:#2ea44f;
+/* Базовий стиль для всіх кнопок панелі — зелений */
+.controlButtons button{
+	background:#2ea44f;
+	color:#fff;
+	border:1px solid transparent;
 	border-radius:6px;
-	color:white;
-	font-weight:700;
-	border:1px,solid,#fff;
-	padding:5px;	
+	padding:7px 14px;
+	font:700 13px/1 inherit;
+	cursor:pointer;
+	box-shadow:0 1px 2px rgba(0,0,0,.08);
+	transition:background-color .15s ease, color .15s ease,
+	           border-color .15s ease, box-shadow .15s ease,
+	           transform .05s ease;
 }
 
-.loadExtensions:hover{
-	background-color:#fff;
-	border-radius:6px;
+.controlButtons button:hover{
+	background:#fff;
 	color:#2ea44f;
-	font-weight:700;
-	border:1px,solid,#2ea44f;
-	padding:5px;	
+	border-color:#2ea44f;
+	box-shadow:0 2px 6px rgba(46,164,79,.25);
 }
 
-.loadConfs{
-	background-color:#2ea44f;
-	border-radius:6px;
-	color:white;
-	font-weight:700;
-	border:1px,solid,#fff;
-	padding:5px;	
+.controlButtons button:active{
+	transform:translateY(1px);
+	box-shadow:0 1px 1px rgba(0,0,0,.08);
 }
 
-.loadConfs:hover{
-	background-color:#fff;
-	border-radius:6px;
-	color:#2ea44f;
-	font-weight:700;
-	border:1px,solid,#2ea44f;
-	padding:5px;	
+.controlButtons button:focus-visible{
+	outline:2px solid #2ea44f;
+	outline-offset:2px;
 }
 
+/* ----- Перемикач «Повторювати кожні 5с» — синій ----- */
 
-.onRepeat{
-	background-color:#0095ff;
-	border-radius:6px;
-	color:white;
-	font-weight:700;
-	border:1px,solid,#fff;
-	padding:5px;	
+.controlButtons .onRepeat{
+	background:#0095ff;
 }
 
-.onRepeat:hover{
-	background-color:#fff;
-	border-radius:6px;
+.controlButtons .onRepeat:hover{
+	background:#fff;
 	color:#0095ff;
-	font-weight:700;
-	border:1px,solid,#0095ff;
-	padding:5px;	
+	border-color:#0095ff;
+	box-shadow:0 2px 6px rgba(0,149,255,.25);
 }
 
-.showCalls{
-	background-color:#2ea44f;
-	border-radius:6px;
-	color:white;
-	font-weight:700;
-	border:1px,solid,#fff;
-	padding:5px;	
+.controlButtons .onRepeat:focus-visible{
+	outline-color:#0095ff;
 }
 
-.showCalls:hover{
-	background-color:#fff;
-	border-radius:6px;
-	color:#2ea44f;
-	font-weight:700;
-	border:1px,solid,#2ea44f;
-	padding:5px;
+/* Активний стан повтору (.test додається через classList).
+   Фіолетовий + пульсуюче кільце — щоб не забути, що інтервал крутиться.
+   Колір спеціально не червоний і не помаранчевий — ті займають
+   деструктивні дії (kick/hangup) і не повинні мерехтіти на панелі. */
+.controlButtons .onRepeat.test{
+	background:#8b5cf6;
+	color:#fff;
+	border-color:transparent;
+	box-shadow:0 0 0 3px rgba(139,92,246,.22), 0 1px 2px rgba(0,0,0,.08);
+	animation:lazyPulse 1.8s ease-in-out infinite;
 }
 
-
-.showCallsDetailed{
-	background-color:#2ea44f;
-	border-radius:6px;
-	color:white;
-	font-weight:700;
-	border:1px,solid,#fff;
-	padding:5px;		
+.controlButtons .onRepeat.test:hover{
+	background:#fff;
+	color:#8b5cf6;
+	border-color:#8b5cf6;
+	animation:none;
 }
 
-.showCallsDetailed:hover{
-	background-color:#fff;
-	border-radius:6px;
-	color:#2ea44f;
-	font-weight:700;
-	border:1px,solid,#2ea44f;
-	padding:5px;	
+@keyframes lazyPulse{
+	0%,100%{ box-shadow:0 0 0 3px rgba(139,92,246,.22), 0 1px 2px rgba(0,0,0,.08); }
+	50%    { box-shadow:0 0 0 7px rgba(139,92,246,.10), 0 1px 2px rgba(0,0,0,.08); }
 }
 
 
+/* ----- Степпер інтервалу повтору (− / +) ----- */
+/* Фіолетовий контур, у тон активному режиму повтору. */
 
+.controlButtons .repeatMinus,
+.controlButtons .repeatPlus{
+	background:#fff;
+	color:#8b5cf6;
+	border:1px solid #8b5cf6;
+	font-size:16px;
+	line-height:1;
+	padding:7px 0;
+	min-width:34px;
+	text-align:center;
+	box-shadow:none;
+}
 
-.test{
+.controlButtons .repeatMinus:hover,
+.controlButtons .repeatPlus:hover{
+	background:#8b5cf6;
+	color:#fff;
+	border-color:#8b5cf6;
+	box-shadow:0 2px 6px rgba(139,92,246,.25);
+}
+
+.controlButtons .repeatMinus:focus-visible,
+.controlButtons .repeatPlus:focus-visible{
+	outline-color:#8b5cf6;
 }
 
 
-/* --- Підсвітка тексту в pre[2] (стійка до повтору кожні 5с) --- */
+/* ===== Рядок підсвітки ===== */
 
 .highlightRow{
 	display:flex;
 	align-items:center;
-	gap:6px;
-	margin-top:8px;
-	margin-bottom:4px;
+	gap:8px;
 }
 
 .highlightRow label{
 	font-weight:700;
 	font-size:13px;
-	color:#333;
+	color:#334155;
+	white-space:nowrap;
 }
 
 #highlightInput{
 	flex:1;
-	padding:5px 8px;
-	border:1px solid #bbb;
+	min-width:200px;
+	padding:7px 10px;
+	border:1px solid #cbd5e1;
 	border-radius:6px;
-	font-family:Consolas,monospace;
+	font-family:Consolas,"Courier New",monospace;
 	font-size:13px;
-	min-width:180px;
+	background:#fff;
+	color:#1e293b;
+	transition:border-color .15s ease, box-shadow .15s ease;
+}
+
+#highlightInput::placeholder{
+	color:#94a3b8;
 }
 
 #highlightInput:focus{
-	outline:2px solid #ffeb3b;
-	outline-offset:-1px;
+	outline:none;
 	border-color:#ffb300;
+	box-shadow:0 0 0 3px rgba(255,235,59,.35);
 }
 
 .clearHighlight{
-	background:#eee;
-	border:1px solid #bbb;
+	background:#f1f5f9;
+	border:1px solid #cbd5e1;
 	border-radius:6px;
 	cursor:pointer;
-	padding:4px 10px;
+	padding:6px 11px;
 	font-weight:700;
-	color:#555;
-	font-size:14px;
+	color:#64748b;
+	font-size:16px;
 	line-height:1;
+	transition:background-color .15s ease, color .15s ease,
+	           border-color .15s ease;
 }
 
 .clearHighlight:hover{
-	background:#ddd;
-	color:#000;
+	background:#fff;
+	color:#ef4444;
+	border-color:#ef4444;
 }
+
+
+/* ===== Прогресбар відліку до наступного автонадсилання =====
+   Видимий лише коли активний режим повтору (.onRepeat.test).
+   width-transition задається через JS на кожному tick-у. */
+
+.repeatProgress{
+	height:8px;
+	background:#f1f5f9;
+	border-radius:4px;
+	overflow:hidden;
+	display:none;
+	border:1px solid #e2e8f0;
+}
+
+.repeatProgress.active{
+	display:block;
+}
+
+.repeatProgress-fill{
+	height:100%;
+	width:0%;
+	background:linear-gradient(90deg, #8b5cf6, #a78bfa);
+	border-radius:3px;
+	box-shadow:0 0 6px rgba(139,92,246,.40);
+}
+
+
+/* ===== Жовтий маркер у виводі =====
+   ВАЖЛИВО: жодних padding / box-shadow / outline — це зсунуло б символи
+   в монопросторовому виводі (`core show channels` має колонки, які треба
+   вирівнювати по горизонталі). Тільки фон + колір + border-radius. */
 
 mark.lazy-highlight{
 	background:#ffeb3b;
 	color:#000;
 	font-weight:700;
-	padding:0 2px;
 	border-radius:2px;
-	box-shadow:0 0 0 1px rgba(0,0,0,.2);
+}
+
+
+/* ===== Локальний вивід розширення (dropdown / попередження) ===== */
+
+.ext-output{
+	display:flex;
+	flex-wrap:wrap;
+	align-items:center;
+	gap:8px;
+}
+
+/* Стилізований <select> зі списком конференцій. Прибираємо нативну стрілку,
+   малюємо власну SVG-шеврону в зеленому, щоб збігалася з кнопками. */
+.ext-output select{
+	appearance:none;
+	-webkit-appearance:none;
+	-moz-appearance:none;
+	padding:7px 34px 7px 14px;
+	border:1px solid #2ea44f;
+	border-radius:6px;
+	background-color:#fff;
+	background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='%232ea44f' stroke-width='2' stroke-linecap='round'><path d='M1 1.5l5 5 5-5'/></svg>");
+	background-repeat:no-repeat;
+	background-position:right 12px center;
+	background-size:10px;
+	font:700 13px/1 inherit;
+	color:#2ea44f;
+	cursor:pointer;
+	min-width:220px;
+	transition:border-color .15s ease, box-shadow .15s ease,
+	           background-color .15s ease;
+}
+
+.ext-output select:hover{
+	background-color:#f0fdf4;
+	box-shadow:0 2px 6px rgba(46,164,79,.18);
+}
+
+.ext-output select:focus{
+	outline:none;
+	box-shadow:0 0 0 3px rgba(46,164,79,.25);
+}
+
+.ext-output select option{
+	color:#1e293b;
+	font-weight:600;
+}
+
+/* Попередження «Заз немає конференцій :(» */
+.ext-output p{
+	color:#94a3b8;
+	font-size:13px;
+	font-style:italic;
+	padding:6px 2px;
+}
+
+
+/* ===== Inline-кнопки kick / hangup, що вставляються в pre[2] =====
+   Розширення задає їм inline-стилі (margin-right, cursor); додаємо лише
+   те, що не перетинається з inline-стилями. */
+
+.generated-kick-btn,
+.generated-hangup-btn{
+	background:#fff;
+	border:1px solid #ef4444;
+	color:#ef4444;
+	border-radius:4px;
+	padding:1px 8px;
+	font:700 11px/1.4 system-ui,sans-serif;
+	transition:background-color .12s ease, color .12s ease;
+}
+
+.generated-kick-btn:hover,
+.generated-hangup-btn:hover{
+	background:#ef4444;
+	color:#fff;
 }
