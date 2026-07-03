@@ -38,6 +38,18 @@ function unregisterPeer(sipNumber) {
     sendQuery('sip unregister', sipNumber)
 }
 
+// sip show peer / sip unregister приймають ІМ'Я ПІРА (200), а не канал (SIP/200-000000a3).
+// Користувач найчастіше копіює саме канал з виводу — приводимо до імені піра.
+// Суфікс -xxxx ріжемо ТІЛЬКИ коли є префікс SIP/ — інакше пір з дефісом у імені
+// (набраний вручну) залишиться неушкодженим.
+function extractPeerName(value) {
+    let v = value.trim()
+    if (/^SIP\//i.test(v)) {
+        v = v.replace(/^SIP\//i, '').replace(/-[^-]*$/, '')
+    }
+    return v
+}
+
 function showCalls() {
     sendQuery('core show channels')
 }
@@ -214,10 +226,6 @@ function initExtension() {
     newDiv.innerHTML = `
         <div id="lazyAsterisk">
             <div class="controlButtons">
-                <button class="loadExtensions">
-                    1 номер
-                </button>
-                
                 <button class="loadConfs">
                     Завантажити конференції
                 </button>
@@ -237,6 +245,12 @@ function initExtension() {
                 <button class="onRepeat">
                     Відправляти раз в 5 секунд
                 </button>
+            </div>
+            <div class="peerRow">
+                <label for="peerInput">Номер:</label>
+                <input id="peerInput" type="text" placeholder="напр., 200 або SIP/200-000000a3 — канал зведемо до піра самі">
+                <button class="peerInfo" title="sip show peer — реєстрація, IP, кодеки, статус">Інфо про номер</button>
+                <button class="peerUnregister" title="sip unregister — телефон буде змушений перереєструватися">Розреєструвати</button>
             </div>
             <div class="highlightRow">
                 <label for="highlightInput">Підсвітити в виводі:</label>
@@ -263,6 +277,19 @@ function initExtension() {
 
     document.querySelector('.showCalls').addEventListener('click', showCalls)
     document.querySelector('.showCallsDetailed').addEventListener('click', showCallsDetailed)
+
+    // --- Рядок роботи з одним піром (sip show peer / sip unregister) ---
+    const peerInput = document.getElementById('peerInput')
+    const runPeerAction = (fn) => {
+        const peer = extractPeerName(peerInput.value)
+        if (peer) fn(peer)
+    }
+    document.querySelector('.peerInfo').addEventListener('click', () => runPeerAction(showPeerInfo))
+    document.querySelector('.peerUnregister').addEventListener('click', () => runPeerAction(unregisterPeer))
+    // Enter у полі = найчастіша (і безпечна) дія — показати інфо.
+    peerInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') runPeerAction(showPeerInfo)
+    })
 
 
 

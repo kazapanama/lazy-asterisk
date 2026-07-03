@@ -60,6 +60,61 @@ describe('peer / call query helpers', () => {
   })
 })
 
+describe('peer row (sip show peer / sip unregister)', () => {
+  test('the row exists: input + info + unregister; the dead "1 номер" button is gone', () => {
+    const { document } = bootDOM()
+    expect(document.getElementById('peerInput')).not.toBeNull()
+    expect(document.querySelector('.peerInfo')).not.toBeNull()
+    expect(document.querySelector('.peerUnregister')).not.toBeNull()
+    expect(document.querySelector('.peerRow label[for="peerInput"]')).not.toBeNull()
+    expect(document.querySelector('.loadExtensions')).toBeNull()
+  })
+
+  test('clicking "Інфо про номер" sends sip show peer for the typed number', () => {
+    const { document } = bootDOM()
+    document.getElementById('peerInput').value = '200'
+    document.querySelector('.peerInfo').click()
+    expect(document.getElementById('astcmd').value).toBe('sip show peer  200   ')
+  })
+
+  test('clicking "Розреєструвати" sends sip unregister for the typed number', () => {
+    const { document } = bootDOM()
+    document.getElementById('peerInput').value = '200'
+    document.querySelector('.peerUnregister').click()
+    expect(document.getElementById('astcmd').value).toBe('sip unregister  200   ')
+  })
+
+  test('a pasted channel name SIP/200-000000a3 is reduced to the peer name 200', () => {
+    const { document } = bootDOM()
+    document.getElementById('peerInput').value = 'SIP/200-000000a3'
+    document.querySelector('.peerInfo').click()
+    expect(document.getElementById('astcmd').value).toBe('sip show peer  200   ')
+  })
+
+  test('input is trimmed; a peer typed WITHOUT SIP/ prefix keeps its dashes intact', () => {
+    const { document } = bootDOM()
+    document.getElementById('peerInput').value = '  office-2  '
+    document.querySelector('.peerInfo').click()
+    expect(document.getElementById('astcmd').value).toBe('sip show peer  office-2   ')
+  })
+
+  test('empty input: neither button sends anything', () => {
+    const { document } = bootDOM()
+    document.getElementById('peerInput').value = '   '
+    document.querySelector('.peerInfo').click()
+    document.querySelector('.peerUnregister').click()
+    expect(document.getElementById('astcmd').value).toBe('')
+  })
+
+  test('Enter inside the input triggers the safe action (sip show peer)', () => {
+    const { window, document } = bootDOM()
+    const input = document.getElementById('peerInput')
+    input.value = '201'
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter' }))
+    expect(document.getElementById('astcmd').value).toBe('sip show peer  201   ')
+  })
+})
+
 describe('onRepeat toggle', () => {
   test('first click starts a 5s interval and flips the label, second click stops it', () => {
     const { document, pendingIntervals } = bootDOM()

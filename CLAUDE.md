@@ -63,6 +63,12 @@ Two spaces between each part. `number` and `optional` default to `' '` (a single
 - **Dynamic label:** `updateRepeatLabel()` is the single source of truth — `Перестати повторювати` while active, otherwise `Відправляти раз в <N> <pluralizeSeconds(N)>`. `pluralizeSeconds` applies Ukrainian plural rules (1 секунду / 2-4 секунди / 5+ секунд). Called at init and on every toggle/adjust.
 - **Countdown bar:** `.repeatProgress` / `.repeatProgress-fill` is shown only while active (`.active` class). `kickRepeatProgress()` resets width to 0% then animates to 100% over `repeatSeconds`s on every tick. **The `void offsetWidth` reflow between the two width writes is mandatory** — without it the browser coalesces both style mutations and the transition never runs.
 
+## Peer row (sip show peer / sip unregister)
+
+`.peerRow` — input `#peerInput` + buttons `.peerInfo` (`sip show peer`) and `.peerUnregister` (`sip unregister`). Enter in the input triggers the safe action (`sip show peer`). Empty/whitespace input is a no-op.
+
+**`extractPeerName`**: both commands take a **peer name** (`200`), not a channel (`SIP/200-000000a3`). If the input starts with `SIP/`, the prefix and the last `-suffix` are stripped; otherwise the value is passed through as-is (so a hand-typed peer like `office-2` keeps its dash). This replaced the old dead `.loadExtensions` ("1 номер") button, which had no listener.
+
 ## Tests
 
 ```bash
