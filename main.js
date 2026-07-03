@@ -358,6 +358,10 @@ function loadAllConfs() {
         const regex = /\d{3,}/g
         let matches = [...preElement.matchAll(regex)].map(item => item[0])
 
+        // Чистимо ЗАВЖДИ, до розгалуження — інакше повторні натискання
+        // «Завантажити конференції» без активних конференцій апендять
+        // попередження одне за одним.
+        outputDiv.innerHTML = ''
 
         if (matches.length > 0) {
             let select = document.createElement("select");
@@ -373,7 +377,6 @@ function loadAllConfs() {
                 option.text = match
                 select.appendChild(option);
             }
-            outputDiv.innerHTML = ''
             outputDiv.appendChild(select)
 
             select.addEventListener('change', () => loadOneConf(select.value))
@@ -381,7 +384,7 @@ function loadAllConfs() {
             //nema conferenciy
 
             let warningIfEmpty = document.createElement("p");
-            warningIfEmpty.innerText = 'Заз немає конференцій :('
+            warningIfEmpty.innerText = 'Зараз немає конференцій :('
             outputDiv.append(warningIfEmpty)
         }
 

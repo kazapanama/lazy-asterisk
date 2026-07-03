@@ -308,6 +308,53 @@ describe('loadAllConfs', () => {
     expect(warning.innerText).toMatch(/немає конференцій/)
   })
 
+  test('pressing the button repeatedly with no conferences keeps exactly ONE warning', () => {
+    const { window, document, flushTimeouts } = bootDOM()
+    const pres = document.querySelectorAll('pre')
+    pres[2].textContent = 'No active conferences.'
+
+    window.loadAllConfs()
+    flushTimeouts()
+    window.loadAllConfs()
+    flushTimeouts()
+    window.loadAllConfs()
+    flushTimeouts()
+
+    expect(document.querySelectorAll('.ext-output p')).toHaveLength(1)
+  })
+
+  test('empty → confs appear: the warning is replaced by the select (no leftovers)', () => {
+    const { window, document, flushTimeouts } = bootDOM()
+    const pres = document.querySelectorAll('pre')
+
+    pres[2].textContent = 'No active conferences.'
+    window.loadAllConfs()
+    flushTimeouts()
+    expect(document.querySelectorAll('.ext-output p')).toHaveLength(1)
+
+    pres[2].textContent = '5500\n'
+    window.loadAllConfs()
+    flushTimeouts()
+    expect(document.querySelectorAll('.ext-output p')).toHaveLength(0)
+    expect(document.querySelectorAll('.ext-output select')).toHaveLength(1)
+  })
+
+  test('confs disappear: the select is replaced by a single warning', () => {
+    const { window, document, flushTimeouts } = bootDOM()
+    const pres = document.querySelectorAll('pre')
+
+    pres[2].textContent = '5500\n'
+    window.loadAllConfs()
+    flushTimeouts()
+    expect(document.querySelectorAll('.ext-output select')).toHaveLength(1)
+
+    pres[2].textContent = 'No active conferences.'
+    window.loadAllConfs()
+    flushTimeouts()
+    expect(document.querySelectorAll('.ext-output select')).toHaveLength(0)
+    expect(document.querySelectorAll('.ext-output p')).toHaveLength(1)
+  })
+
   test('changing the select triggers loadOneConf with the chosen conf', () => {
     const { window, document, flushTimeouts } = bootDOM()
     const pres = document.querySelectorAll('pre')
