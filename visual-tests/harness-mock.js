@@ -8,8 +8,9 @@
 //   confbridge kick <conf> all         — викинути всіх
 //   confbridge kick <conf> <sip>       — викинути одного
 //   core show channels [verbose]       — список дзвінків
-//   sip show peer <sip>                — інформація про peer-а
-//   sip unregister <sip>               — розреєструвати peer-а
+//   pjsip show aor|endpoint <sip>      — інформація про номер
+//   pjsip show contacts                — список контактів (transport обрізаний!)
+//   pjsip show contact <aor/uri>       — один контакт за повним ім'ям
 //   channel request hangup <sip>       — покласти канал
 (function () {
   const cmdLog = document.getElementById('cmdLog');
@@ -29,6 +30,25 @@
     ],
   };
   let users = cloneUsers();
+
+  // Зареєстровані PJSIP-контакти: номер → ip:port. IP/порти різної довжини,
+  // щоб обрізання transport в pjsip show contacts падало в різні місця.
+  const contacts = {
+    '200':  '192.168.0.50:50001',
+    '201':  '192.168.100.123:50123',
+    '202':  '192.168.0.7:5061',
+    '2001': '192.168.10.77:50999',
+  };
+
+  function fullContact(peer) {
+    return peer + '/sips:' + peer + '@' + contacts[peer] + ';transport=TLS';
+  }
+
+  // Asterisk друкує aor/uri у колонці фіксованої ширини — довше обрізається.
+  const CONTACT_COL = 42;
+  function truncateContact(peer) {
+    return fullContact(peer).slice(0, CONTACT_COL).padEnd(CONTACT_COL);
+  }
 
   function cloneUsers() {
     const c = {};
@@ -176,20 +196,56 @@
       ].join('\n');
     }
 
-    m = cmd.match(/^sip show peer (.+)$/);
+    m = cmd.match(/^pjsip show aor (.+)$/);
     if (m) {
-      const peer = m[1];
+      const c = contacts[m[1]];
+      if (!c) return 'Unable to find object ' + m[1] + '.';
       return [
-        '  * Name       : ' + peer,
-        '    Description : Test peer',
-        '    Status      : OK (12 ms)',
-        '    Useragent   : MicroSIP/3.20.6',
-        '    Reg.Contact : sip:' + peer + '@192.168.0.50:50001',
+        '      Aor:  ' + m[1].padEnd(50) + '1',
+        '    Contact:  ' + truncateContact(m[1]) + ' 5f3c2a1b8d Avail        12.345',
       ].join('\n');
     }
 
-    m = cmd.match(/^sip unregister (.+)$/);
-    if (m) return 'Unregistered SIP peer ' + m[1] + '.';
+    m = cmd.match(/^pjsip show endpoint (.+)$/);
+    if (m) {
+      const c = contacts[m[1]];
+      if (!c) return 'Unable to find object ' + m[1] + '.';
+      return [
+        ' Endpoint:  ' + m[1] + '/' + m[1] + '    Not in use    0 of inf',
+        '     InAuth:  ' + m[1] + '-auth/' + m[1],
+        '        Aor:  ' + m[1] + '    1',
+        '      Contact:  ' + truncateContact(m[1]) + ' 5f3c2a1b8d Avail        12.345',
+        '  Transport:  0.0.0.0-tls    tls    0    0  0.0.0.0:5061',
+      ].join('\n');
+    }
+
+    if (cmd === 'pjsip show contacts') {
+      const lines = [
+        '  Contact:  <Aor/ContactUri..........................> <Hash....> <Status> <RTT(ms)..>',
+        '==========================================================================================',
+        '',
+      ];
+      for (const peer in contacts) {
+        lines.push('  Contact:  ' + truncateContact(peer) + ' 5f3c2a1b8d Avail        12.345');
+      }
+      lines.push('', 'Objects found: ' + Object.keys(contacts).length);
+      return lines.join('\n');
+    }
+
+    m = cmd.match(/^pjsip show contact (.+)$/);
+    if (m) {
+      const peer = Object.keys(contacts).find(p => fullContact(p) === m[1]);
+      if (!peer) return 'Unable to find object ' + m[1] + '.';
+      return [
+        '  Contact:  ' + m[1] + ' 5f3c2a1b8d Avail        12.345',
+        '',
+        ' ParameterName        : ParameterValue',
+        ' ===============================================',
+        ' uri                  : sips:' + peer + '@' + contacts[peer],
+        ' user_agent           : MicroSIP/3.21.3',
+        ' via_addr             : ' + contacts[peer],
+      ].join('\n');
+    }
 
     m = cmd.match(/^channel request hangup (.+)$/);
     if (m) return 'Requested hangup on channel ' + m[1] + '.';

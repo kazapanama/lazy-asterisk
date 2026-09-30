@@ -30,15 +30,66 @@ function kickOne(confNumber, sipNumber,) {
     setTimeout(() => loadOneConf(confNumber), 2000)
 }
 
-function showPeerInfo(sipNumber) {
-    sendQuery('sip show peer', sipNumber)
+function showAor(sipNumber) {
+    sendQuery('pjsip show aor', sipNumber)
 }
 
-function unregisterPeer(sipNumber) {
-    sendQuery('sip unregister', sipNumber)
+function showEndpoint(sipNumber) {
+    sendQuery('pjsip show endpoint', sipNumber)
 }
 
-// sip show peer / sip unregister приймають ІМ'Я ПІРА (200), а не канал (SIP/200-000000a3).
+// Хвіст, яким закінчується повне ім'я контакту: 200/sips:200@192.168.0.50:50001;transport=TLS
+const CONTACT_TRANSPORT_SUFFIX = ';transport=TLS'
+
+// pjsip show contacts друкує "aor/uri" у колонці фіксованої ширини, тож хвіст
+// ";transport=TLS" обрізається в довільному місці (";transpo", ";t", ";" або
+// взагалі одразу після порту) — залежно від довжини номера/IP/порту.
+// Дописуємо його назад, інакше pjsip show contact не знайде контакт.
+function completeContactName(truncated) {
+    const lower = truncated.toLowerCase()
+    const suffix = CONTACT_TRANSPORT_SUFFIX.toLowerCase()
+    if (lower.includes(suffix)) return truncated
+    // Шукаємо найдовший початок суфікса, яким закінчується рядок (";transpo" → k=8).
+    for (let k = suffix.length - 1; k >= 1; k--) {
+        if (lower.endsWith(suffix.slice(0, k))) {
+            return truncated.slice(0, truncated.length - k) + CONTACT_TRANSPORT_SUFFIX
+        }
+    }
+    // Обрізано рівно по порту — дописуємо суфікс цілком.
+    return truncated + CONTACT_TRANSPORT_SUFFIX
+}
+
+// pjsip show contact вимагає ПОВНЕ ім'я контакту, а не номер. Тому спочатку
+// pjsip show contacts, дістаємо з виводу рядок "Contact:  200/sips:..." для цього
+// номера, дописуємо обрізаний transport і вже тоді надсилаємо pjsip show contact.
+function showContact(sipNumber) {
+    // Чистимо вивід, щоб не зачепити контакт зі старого (застарілого) виводу.
+    document.querySelectorAll('pre')[2].innerHTML = ''
+    sendQuery('pjsip show contacts')
+
+    setTimeout(() => {
+        const text = document.querySelectorAll('pre')[2].textContent
+        const names = [...text.matchAll(/Contact:\s+(\S+)/g)]
+            .map(m => m[1])
+            .filter(name => name.startsWith(`${sipNumber}/`))
+
+        if (names.length === 0) {
+            setPeerStatus(`Контакт для ${sipNumber} не знайдено — номер не зареєстрований?`)
+            return
+        }
+        if (names.length > 1) {
+            setPeerStatus(`У ${sipNumber} контактів: ${names.length}, показую перший`)
+        }
+        sendQuery('pjsip show contact', completeContactName(names[0]))
+    }, 1000)
+}
+
+function setPeerStatus(text) {
+    const status = document.querySelector('.peerStatus')
+    if (status) status.textContent = text
+}
+
+// pjsip show aor/endpoint/contact приймають ІМ'Я ПІРА (200), а не канал (SIP/200-000000a3).
 // Користувач найчастіше копіює саме канал з виводу — приводимо до імені піра.
 // Суфікс -xxxx ріжемо ТІЛЬКИ коли є префікс SIP/ — інакше пір з дефісом у імені
 // (набраний вручну) залишиться неушкодженим.
@@ -249,8 +300,10 @@ function initExtension() {
             <div class="peerRow">
                 <label for="peerInput">Номер:</label>
                 <input id="peerInput" type="text" placeholder="напр., 200 або SIP/200-000000a3 — канал зведемо до піра самі">
-                <button class="peerInfo" title="sip show peer — реєстрація, IP, кодеки, статус">Інфо про номер</button>
-                <button class="peerUnregister" title="sip unregister — телефон буде змушений перереєструватися">Розреєструвати</button>
+                <button class="peerAor" title="pjsip show aor — AOR номера та його контакти">AOR</button>
+                <button class="peerEndpoint" title="pjsip show endpoint — налаштування, кодеки, статус (також по Enter)">Endpoint</button>
+                <button class="peerContact" title="pjsip show contacts → знаходить повне ім'я контакту → pjsip show contact">Contact</button>
+                <span class="peerStatus"></span>
             </div>
             <div class="highlightRow">
                 <label for="highlightInput">Підсвітити в виводі:</label>
@@ -278,17 +331,20 @@ function initExtension() {
     document.querySelector('.showCalls').addEventListener('click', showCalls)
     document.querySelector('.showCallsDetailed').addEventListener('click', showCallsDetailed)
 
-    // --- Рядок роботи з одним піром (sip show peer / sip unregister) ---
+    // --- Рядок роботи з одним піром (pjsip show aor / endpoint / contact) ---
     const peerInput = document.getElementById('peerInput')
     const runPeerAction = (fn) => {
         const peer = extractPeerName(peerInput.value)
-        if (peer) fn(peer)
+        if (!peer) return
+        setPeerStatus('')
+        fn(peer)
     }
-    document.querySelector('.peerInfo').addEventListener('click', () => runPeerAction(showPeerInfo))
-    document.querySelector('.peerUnregister').addEventListener('click', () => runPeerAction(unregisterPeer))
-    // Enter у полі = найчастіша (і безпечна) дія — показати інфо.
+    document.querySelector('.peerAor').addEventListener('click', () => runPeerAction(showAor))
+    document.querySelector('.peerEndpoint').addEventListener('click', () => runPeerAction(showEndpoint))
+    document.querySelector('.peerContact').addEventListener('click', () => runPeerAction(showContact))
+    // Enter у полі = найінформативніша дія — endpoint.
     peerInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') runPeerAction(showPeerInfo)
+        if (e.key === 'Enter') runPeerAction(showEndpoint)
     })
 
 

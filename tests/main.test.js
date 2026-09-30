@@ -41,16 +41,16 @@ describe('kick helpers', () => {
 })
 
 describe('peer / call query helpers', () => {
-  test('showPeerInfo → "sip show peer  <sip>"', () => {
+  test('showAor → "pjsip show aor  <sip>"', () => {
     const { window, document } = bootDOM()
-    window.showPeerInfo('200')
-    expect(document.getElementById('astcmd').value).toBe('sip show peer  200   ')
+    window.showAor('200')
+    expect(document.getElementById('astcmd').value).toBe('pjsip show aor  200   ')
   })
 
-  test('unregisterPeer → "sip unregister  <sip>"', () => {
+  test('showEndpoint → "pjsip show endpoint  <sip>"', () => {
     const { window, document } = bootDOM()
-    window.unregisterPeer('200')
-    expect(document.getElementById('astcmd').value).toBe('sip unregister  200   ')
+    window.showEndpoint('200')
+    expect(document.getElementById('astcmd').value).toBe('pjsip show endpoint  200   ')
   })
 
   test('showCalls → "core show channels"', () => {
@@ -60,58 +60,174 @@ describe('peer / call query helpers', () => {
   })
 })
 
-describe('peer row (sip show peer / sip unregister)', () => {
-  test('the row exists: input + info + unregister; the dead "1 номер" button is gone', () => {
+describe('completeContactName (restores the transport cut off by pjsip show contacts)', () => {
+  const full = '200/sips:200@192.168.0.50:50001;transport=TLS'
+  const cuts = [
+    '200/sips:200@192.168.0.50:50001;transport=TL',
+    '200/sips:200@192.168.0.50:50001;transport=',
+    '200/sips:200@192.168.0.50:50001;transpo',
+    '200/sips:200@192.168.0.50:50001;t',
+    '200/sips:200@192.168.0.50:50001;',
+    '200/sips:200@192.168.0.50:50001',
+  ]
+
+  test.each(cuts)('%s → full name', (cut) => {
+    const { window } = bootDOM()
+    expect(window.completeContactName(cut)).toBe(full)
+  })
+
+  test('an already complete name is left untouched', () => {
+    const { window } = bootDOM()
+    expect(window.completeContactName(full)).toBe(full)
+  })
+
+  test('lower-case partial transport is completed case-insensitively', () => {
+    const { window } = bootDOM()
+    expect(window.completeContactName('200/sips:200@10.0.0.1:5061;trans')).toBe('200/sips:200@10.0.0.1:5061;transport=TLS')
+  })
+})
+
+describe('peer row (pjsip show aor / endpoint / contact)', () => {
+  const CONTACTS_OUTPUT = [
+    '  Contact:  <Aor/ContactUri..........................> <Hash....> <Status> <RTT(ms)..>',
+    '==========================================================================================',
+    '',
+    '  Contact:  2001/sips:2001@192.168.0.77:50999;transpo 1a2b3c4d5e Avail        10.000',
+    '  Contact:  200/sips:200@192.168.100.123:50123;transp 5f3c2a1b8d Avail        12.345',
+    '  Contact:  201/sips:201@192.168.0.51:5061;transport= a1b2c3d4e5 Avail         8.100',
+    '',
+    'Objects found: 3',
+  ].join('\n')
+
+  test('the row exists: input + AOR/Endpoint/Contact; old info/unregister/"1 номер" buttons are gone', () => {
     const { document } = bootDOM()
     expect(document.getElementById('peerInput')).not.toBeNull()
-    expect(document.querySelector('.peerInfo')).not.toBeNull()
-    expect(document.querySelector('.peerUnregister')).not.toBeNull()
+    expect(document.querySelector('.peerAor')).not.toBeNull()
+    expect(document.querySelector('.peerEndpoint')).not.toBeNull()
+    expect(document.querySelector('.peerContact')).not.toBeNull()
     expect(document.querySelector('.peerRow label[for="peerInput"]')).not.toBeNull()
+    expect(document.querySelector('.peerInfo')).toBeNull()
     expect(document.querySelector('.loadExtensions')).toBeNull()
+    expect(document.querySelector('.peerUnregister')).toBeNull()
   })
 
-  test('clicking "Інфо про номер" sends sip show peer for the typed number', () => {
+  test('AOR / Endpoint buttons send their command straight with the typed number', () => {
     const { document } = bootDOM()
     document.getElementById('peerInput').value = '200'
-    document.querySelector('.peerInfo').click()
-    expect(document.getElementById('astcmd').value).toBe('sip show peer  200   ')
-  })
-
-  test('clicking "Розреєструвати" sends sip unregister for the typed number', () => {
-    const { document } = bootDOM()
-    document.getElementById('peerInput').value = '200'
-    document.querySelector('.peerUnregister').click()
-    expect(document.getElementById('astcmd').value).toBe('sip unregister  200   ')
+    document.querySelector('.peerAor').click()
+    expect(document.getElementById('astcmd').value).toBe('pjsip show aor  200   ')
+    document.querySelector('.peerEndpoint').click()
+    expect(document.getElementById('astcmd').value).toBe('pjsip show endpoint  200   ')
   })
 
   test('a pasted channel name SIP/200-000000a3 is reduced to the peer name 200', () => {
     const { document } = bootDOM()
     document.getElementById('peerInput').value = 'SIP/200-000000a3'
-    document.querySelector('.peerInfo').click()
-    expect(document.getElementById('astcmd').value).toBe('sip show peer  200   ')
+    document.querySelector('.peerEndpoint').click()
+    expect(document.getElementById('astcmd').value).toBe('pjsip show endpoint  200   ')
   })
 
   test('input is trimmed; a peer typed WITHOUT SIP/ prefix keeps its dashes intact', () => {
     const { document } = bootDOM()
     document.getElementById('peerInput').value = '  office-2  '
-    document.querySelector('.peerInfo').click()
-    expect(document.getElementById('astcmd').value).toBe('sip show peer  office-2   ')
+    document.querySelector('.peerAor').click()
+    expect(document.getElementById('astcmd').value).toBe('pjsip show aor  office-2   ')
   })
 
-  test('empty input: neither button sends anything', () => {
-    const { document } = bootDOM()
+  test('empty input: no button sends anything', () => {
+    const { document, pendingTimeouts } = bootDOM()
     document.getElementById('peerInput').value = '   '
-    document.querySelector('.peerInfo').click()
-    document.querySelector('.peerUnregister').click()
+    document.querySelector('.peerAor').click()
+    document.querySelector('.peerEndpoint').click()
+    document.querySelector('.peerContact').click()
     expect(document.getElementById('astcmd').value).toBe('')
+    expect(pendingTimeouts()).toHaveLength(0)
   })
 
-  test('Enter inside the input triggers the safe action (sip show peer)', () => {
+  test('Enter inside the input triggers pjsip show endpoint', () => {
     const { window, document } = bootDOM()
     const input = document.getElementById('peerInput')
     input.value = '201'
     input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter' }))
-    expect(document.getElementById('astcmd').value).toBe('sip show peer  201   ')
+    expect(document.getElementById('astcmd').value).toBe('pjsip show endpoint  201   ')
+  })
+
+  test('Contact: clears pre[2] and first sends "pjsip show contacts"', () => {
+    const { document, pendingTimeouts } = bootDOM()
+    const pres = document.querySelectorAll('pre')
+    pres[2].textContent = 'stale  Contact:  200/sips:200@1.1.1.1:1;transport=TLS'
+    document.getElementById('peerInput').value = '200'
+    document.querySelector('.peerContact').click()
+    expect(pres[2].textContent).toBe('')
+    expect(document.getElementById('astcmd').value).toBe('pjsip show contacts      ')
+    expect(pendingTimeouts()).toHaveLength(1)
+    expect(pendingTimeouts()[0].ms).toBe(1000)
+  })
+
+  test('Contact: picks the exact number (not 2001), completes the cut transport, sends pjsip show contact', () => {
+    const { document, flushTimeouts } = bootDOM()
+    document.getElementById('peerInput').value = '200'
+    document.querySelector('.peerContact').click()
+    document.querySelectorAll('pre')[2].textContent = CONTACTS_OUTPUT
+    flushTimeouts()
+    expect(document.getElementById('astcmd').value)
+      .toBe('pjsip show contact  200/sips:200@192.168.100.123:50123;transport=TLS   ')
+    expect(document.querySelector('.peerStatus').textContent).toBe('')
+  })
+
+  test('Contact: works when the transport is cut right after "="', () => {
+    const { document, flushTimeouts } = bootDOM()
+    document.getElementById('peerInput').value = '201'
+    document.querySelector('.peerContact').click()
+    document.querySelectorAll('pre')[2].textContent = CONTACTS_OUTPUT
+    flushTimeouts()
+    expect(document.getElementById('astcmd').value)
+      .toBe('pjsip show contact  201/sips:201@192.168.0.51:5061;transport=TLS   ')
+  })
+
+  test('Contact: survives highlight <mark>s inside the output (reads textContent)', () => {
+    const { document, flushTimeouts } = bootDOM()
+    document.getElementById('peerInput').value = '200'
+    document.querySelector('.peerContact').click()
+    document.querySelectorAll('pre')[2].innerHTML =
+      '  Contact:  <mark class="lazy-highlight">200</mark>/sips:200@10.0.0.9:5061;tra 5f3c2a1b8d Avail 1.0'
+    flushTimeouts()
+    expect(document.getElementById('astcmd').value)
+      .toBe('pjsip show contact  200/sips:200@10.0.0.9:5061;transport=TLS   ')
+  })
+
+  test('Contact: unknown number → no second command, status message shown', () => {
+    const { document, flushTimeouts } = bootDOM()
+    document.getElementById('peerInput').value = '999'
+    document.querySelector('.peerContact').click()
+    document.querySelectorAll('pre')[2].textContent = CONTACTS_OUTPUT
+    flushTimeouts()
+    expect(document.getElementById('astcmd').value).toBe('pjsip show contacts      ')
+    expect(document.querySelector('.peerStatus').textContent).toContain('999')
+  })
+
+  test('Contact: several contacts for one number → first one is shown, status says how many', () => {
+    const { document, flushTimeouts } = bootDOM()
+    document.getElementById('peerInput').value = '200'
+    document.querySelector('.peerContact').click()
+    document.querySelectorAll('pre')[2].textContent = [
+      '  Contact:  200/sips:200@10.0.0.1:5061;transport=TLS 1111111111 Avail 1.0',
+      '  Contact:  200/sips:200@10.0.0.2:5061;transport=T   2222222222 Avail 1.0',
+    ].join('\n')
+    flushTimeouts()
+    expect(document.getElementById('astcmd').value)
+      .toBe('pjsip show contact  200/sips:200@10.0.0.1:5061;transport=TLS   ')
+    expect(document.querySelector('.peerStatus').textContent).toContain('2')
+  })
+
+  test('the status message is cleared by the next peer action', () => {
+    const { document, flushTimeouts } = bootDOM()
+    document.getElementById('peerInput').value = '999'
+    document.querySelector('.peerContact').click()
+    flushTimeouts()
+    expect(document.querySelector('.peerStatus').textContent).not.toBe('')
+    document.querySelector('.peerAor').click()
+    expect(document.querySelector('.peerStatus').textContent).toBe('')
   })
 })
 
