@@ -6,7 +6,7 @@
   "host_permissions": ["activeTab"],
   "content_scripts": [
     {
-      "matches": ["http://192.168.0.200/admin/config.php?display=cli*"],
+      "matches": ["*://*/admin/config.php?display=cli*"],
       "css":["style.css"],
       "js": ["utils.js","main.js"]
     }

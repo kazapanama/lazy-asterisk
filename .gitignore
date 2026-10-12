@@ -2,3 +2,7 @@ node_modules/
 coverage/
 .vitest-cache/
 *.log
+
+# Windows / Claude Code local files
+Thumbs.db
+.claude/settings.local.json
