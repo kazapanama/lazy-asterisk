@@ -4,7 +4,7 @@
 
 **"Астеріск для лінивих"** — a Chrome Manifest V3 **content script** that injects helper UI into the FreePBX Asterisk CLI page. It does not have a build step, no bundler, no TypeScript, no framework. Two plain `<script>` files are loaded into the page in a fixed order via `manifest.json`.
 
-Target URL (hard-coded in `manifest.json`): `http://192.168.0.200/admin/config.php?display=cli*` — adjust per deployment.
+Target URL (`content_scripts[0].matches` in `manifest.json`): `*://*/admin/config.php?display=cli*` — the FreePBX CLI page on any host, http or https. No per-deployment edit needed.
 
 ## File map
 
@@ -14,7 +14,6 @@ Target URL (hard-coded in `manifest.json`): `http://192.168.0.200/admin/config.p
 | `utils.js` | Defines `sendQuery(command, number, optional)`. References `inputCLI` / `buttonCLI` (defined in `main.js`). |
 | `main.js` | All UI and behavior. Auto-runs `initExtension()` at the bottom on load. |
 | `style.css` | Button styling. |
-| `hello.html` | Unused demo file. Ignore. |
 | `img/tango.png` | Extension icon. |
 | `tests/` | Vitest + jsdom test suite (dev-only — never shipped to Chrome). |
 
@@ -109,4 +108,4 @@ The whole point of the suite is to catch behavior regressions in the **shipped**
 
 ## Manifest target
 
-If a deployment uses a different FreePBX host, update `manifest.json` → `content_scripts[0].matches` and also `host_permissions` if needed. Test page URL pattern: `http://<host>/admin/config.php?display=cli*`.
+`content_scripts[0].matches` is `*://*/admin/config.php?display=cli*`, so the extension activates on the FreePBX CLI page of any PBX. To pin it to a single PBX, replace `*://*` with `http://<host>` (and keep the README in sync). Don't hard-code a real PBX address into the repo — it is public.
