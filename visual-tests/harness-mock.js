@@ -12,6 +12,8 @@
 //   pjsip show contacts                — список контактів (transport обрізаний!)
 //   pjsip show contact <aor/uri>       — один контакт за повним ім'ям
 //   channel request hangup <sip>       — покласти канал
+//   channel originate Local/<n>@<ctx> extension <conf>@<ctx>
+//                                      — набрати в конференцію (вивід порожній, абонент заходить за 3 с)
 (function () {
   const cmdLog = document.getElementById('cmdLog');
   const cmdInput = document.getElementById('astcmd');
@@ -24,12 +26,16 @@
       { sip: 'SIP/201-00000def', muted: 'No',  talking: 'Yes', duration: '00:00:45' },
       { sip: 'SIP/202-00000fff', muted: 'No',  talking: 'No',  duration: '00:00:12' },
     ],
+    // chan_pjsip-канали: розширення має взяти ПОВНЕ ім'я PJSIP/…, а не SIP/… з середини.
     '5501': [
-      { sip: 'SIP/300-00000111', muted: 'No',  talking: 'No',  duration: '00:02:11' },
-      { sip: 'SIP/301-00000222', muted: 'Yes', talking: 'No',  duration: '00:00:33' },
+      { sip: 'PJSIP/300-00000111', muted: 'No',  talking: 'No',  duration: '00:02:11' },
+      { sip: 'PJSIP/301-00000222', muted: 'Yes', talking: 'No',  duration: '00:00:33' },
     ],
   };
   let users = cloneUsers();
+
+  // Скільки «дзвонить» телефон після channel originate, перш ніж абонент зайде в конференцію.
+  const ANSWER_DELAY_MS = 3000;
 
   // Зареєстровані PJSIP-контакти: номер → ip:port. IP/порти різної довжини,
   // щоб обрізання transport в pjsip show contacts падало в різні місця.
@@ -98,38 +104,37 @@
     cmdLog.scrollTop = cmdLog.scrollHeight;
   }
 
+  // Як у app_confbridge: "%-32s %6u %6u %-6s %s". Без конференцій — лише шапка.
+  // Конференції без учасників в Asterisk не існує, тож її не показуємо.
   function formatConfList(activeConfs) {
     const lines = [
-      'Conference Bridge Name    Users  Marked Locked Muted',
-      '======================== ======= ====== ====== =====',
+      'Conference Bridge Name           Users  Marked Locked Muted',
+      '================================ ====== ====== ====== =====',
     ];
     for (const c of activeConfs) {
       const count = users[c] ? users[c].length : 0;
-      const pad = (s, n) => String(s).padEnd(n);
-      lines.push(pad(c, 25) + pad(count, 8) + pad('0', 7) + pad('No', 7) + 'No');
+      if (count === 0) continue;
+      lines.push(c.padEnd(32) + ' ' + String(count).padStart(6) + ' ' + '0'.padStart(6) + ' ' + 'No'.padEnd(6) + ' No');
     }
     return lines.join('\n');
   }
 
   function formatOneConf(conf) {
     const list = users[conf] || [];
-    const header = [
-      'Conference Bridge ' + conf + ' active',
-      'Channel                    User Profile     Bridge Profile  Menu          Muted Talking Answer',
-      '========================== ================ =============== ============= ===== ======= ======',
+    // Останнього учасника викинули → конференції більше немає.
+    if (list.length === 0) return "No conference bridge named '" + conf + "' found!";
+    const lines = [
+      'Channel                        Flags  User Profile     Bridge Profile   Menu             CallerID',
+      '============================== ====== ================ ================ ================ ================',
     ];
-    if (list.length === 0) {
-      header.push('(no users)');
-      return header.join('\n');
-    }
     for (const u of list) {
-      header.push(
-        'User: ' + u.sip.padEnd(22) +
-        ' default_user     default_bridge  default_menu    ' +
-        u.muted.padEnd(5) + ' ' + u.talking.padEnd(7) + ' ' + u.duration
+      const callerId = u.sip.replace(/^\w+\//, '').replace(/-.*$/, '');
+      lines.push(
+        u.sip.padEnd(30) + ' ' + (u.muted === 'Yes' ? 'm' : '').padEnd(6) + ' ' +
+        'default_user     default_bridge   default_menu     ' + callerId
       );
     }
-    return header.join('\n');
+    return lines.join('\n');
   }
 
   function generateResponse(rawCmd) {
@@ -142,7 +147,7 @@
       const s = getScenario('conf-scenario');
       if (s === 'multi') return formatConfList(['5500', '5501']);
       if (s === 'single') return formatConfList(['5500']);
-      return 'No active conferences.';
+      return formatConfList([]);
     }
 
     let m = cmd.match(/^confbridge list (\d+)$/);
@@ -173,7 +178,7 @@
       return [
         'Channel              Location             State   Application(Data)',
         'SIP/200-00000001     200@from-internal:1  Up      ConfBridge(5500)',
-        'SIP/201-00000002     201@from-internal:1  Up      ConfBridge(5500)',
+        'PJSIP/201-00000002   201@from-internal:1  Up      ConfBridge(5500)',
         '',
         '2 active channels',
         '1 active call',
@@ -188,7 +193,7 @@
       return [
         'Channel             Context        Extension   Prio State  Application Data    CallerID Duration BridgeID',
         'SIP/200-00000001    from-internal  5500           1 Up     ConfBridge   5500  "Alice"  00:01:23  br1',
-        'SIP/201-00000002    from-internal  5500           1 Up     ConfBridge   5500  "Bob"    00:00:45  br1',
+        'PJSIP/201-00000002  from-internal  5500           1 Up     ConfBridge   5500  "Bob"    00:00:45  br1',
         '',
         '2 active channels',
         '1 active call',
@@ -249,6 +254,21 @@
 
     m = cmd.match(/^channel request hangup (.+)$/);
     if (m) return 'Requested hangup on channel ' + m[1] + '.';
+
+    // Як справжній Asterisk: originate нічого не друкує. «Абонент бере трубку» через
+    // ANSWER_DELAY_MS і з'являється в конференції під власним PJSIP-каналом.
+    m = cmd.match(/^channel originate Local\/([^@]+)@\S+ extension (\d+)@\S+$/);
+    if (m) {
+      const number = m[1];
+      const conf = m[2];
+      setTimeout(() => {
+        if (!users[conf]) users[conf] = [];
+        const id = Math.floor(Math.random() * 0xfffff).toString(16).padStart(8, '0');
+        users[conf].push({ sip: 'PJSIP/' + number + '-' + id, muted: 'No', talking: 'No', duration: '00:00:00' });
+        logCmd('☎ ' + number + ' взяв трубку → конференція ' + conf, '');
+      }, ANSWER_DELAY_MS);
+      return '';
+    }
 
     return '[mock] Невідома команда: ' + cmd;
   }

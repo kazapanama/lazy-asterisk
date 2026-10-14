@@ -10,24 +10,141 @@ let repeater
 let repeatButton
 
 let highlightInput
-let highlightObserver
+let outputObserver
 
 let repeatProgress
 let repeatProgressFill
 let repeatSeconds = 5
 
+// Остання надіслана в CLI команда, нормалізована (див. normalizeCommand).
+// Оновлюється на КОЖНЕ надсилання: наше, ручне чи з інтервалу повтору.
+// За нею observer вирішує, які кнопки вставити у вивід, а sendAndWait
+// перевіряє, чи відповідь, яку він чекає, ще «наша».
+let lastSentCommand = ''
+
+// Конференція, відкрита в dropdown. Зберігаємо вибір під час оновлення списку.
+let selectedConf = ''
+
+// Ім'я каналу: PJSIP/200-0000001a, SIP/200-000000a3, Local/200@from-internal-0001;1 …
+// \b не дає зачепити "SIP/" всередині "PJSIP/". Раніше кнопка отримувала SIP/200-…,
+// і kick/hangup відповідали «channel not found».
+const CHANNEL_REGEX = /\b((?:PJSIP|SIP|IAX2|DAHDI|Local)\/[^\s]+)/
+
+// Пауза після kick/hangup перед перечитуванням списку: CLI відповідає одразу, а канал
+// виходить з мосту асинхронно. Якщо перечитати миттєво, викинутий ще буде у списку.
+const SETTLE_MS = 500
+
+// «ВИКИНУТИ ВСІХ» спрацьовує лише з другого кліку, зробленого протягом цього часу.
+const KICK_ALL_CONFIRM_MS = 4000
+
+// Конференція, для якої «ВИКИНУТИ ВСІХ» уже натиснули один раз. Тримаємо стан тут, а не
+// в кнопці: у режимі повтору FreePBX кожні N секунд перемальовує вивід, і кнопка
+// створюється заново. Якби стан жив у DOM, другий клік лише «озброював» би нову кнопку.
+let kickAllArmedConf = ''
+let kickAllArmTimer
+
+// Контекст FreePBX, через який набираємо абонента і заводимо його в конференцію.
+const DIAL_CONTEXT = 'from-internal'
+
+// channel originate нічого не друкує, тож чекати відповіді нема на що. Даємо FreePBX
+// секунду на запит і повертаємо в CLI перегляд конференції.
+const ORIGINATE_SETTLE_MS = 1000
+
+// Клікабельний номер у виводі: 3–15 цифр (можна з +), що стоїть окремим словом.
+// Не чіпає порти (":50001"), час ("00:01:23"), IP ("192.168."), хвіст каналу ("/200-").
+const NUMBER_TOKEN = String.raw`(?<![^\s<"(\[])\+?\d{3,15}(?![^\s>")\]/@,;])`
+const TOKEN_REGEX = new RegExp(`${CHANNEL_REGEX.source}|${NUMBER_TOKEN}`, 'g')
 
 
+
+
+function normalizeCommand(cmd) {
+    return cmd.replace(/\s+/g, ' ').trim()
+}
+
+// Команди, які режим повтору НІКОЛИ не надсилає повторно. Інакше «ВИКИНУТИ ВСІХ»
+// у live-режимі викидав би кожного, хто заходить, кожні N секунд, а «Набрати» дзвонив би
+// абоненту знову й знову.
+function isDestructiveCommand(cmd) {
+    return /^(confbridge kick|channel request hangup|channel originate)\b/.test(normalizeCommand(cmd))
+}
+
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
+}
 
 //kick all
-function kickAll(confNumber) {
-    sendQuery('confbridge kick ', confNumber, ' all')
+// Після kick all конференція зникає, тому оновлюємо весь список (і dropdown).
+async function kickAll(confNumber) {
+    await sendAndWait('confbridge kick ', confNumber, ' all')
+    await delay(SETTLE_MS)
+    loadAllConfs()
 }
 
 //kick one extension
-function kickOne(confNumber, sipNumber,) {
-    sendQuery('confbridge kick ', confNumber, sipNumber)
-    setTimeout(() => loadOneConf(confNumber), 2000)
+// Перечитуємо конференцію ЗАВЖДИ, навіть якщо відповіді на kick не дочекалися:
+// так у #astcmd повертається команда перегляду, і повтор продовжує показувати список.
+async function kickOne(confNumber, channel) {
+    await sendAndWait('confbridge kick ', confNumber, channel)
+    await delay(SETTLE_MS)
+    loadOneConf(confNumber)
+}
+
+// Перший клік «озброює» кнопку на KICK_ALL_CONFIRM_MS, другий викидає всіх.
+function onKickAllClick(confNumber) {
+    if (kickAllArmedConf === confNumber) {
+        disarmKickAll()
+        kickAll(confNumber)
+        return
+    }
+    kickAllArmedConf = confNumber
+    clearTimeout(kickAllArmTimer)
+    kickAllArmTimer = setTimeout(disarmKickAll, KICK_ALL_CONFIRM_MS)
+    document.querySelectorAll('.lazy-kick-all').forEach(renderKickAllButton)
+}
+
+function disarmKickAll() {
+    kickAllArmedConf = ''
+    clearTimeout(kickAllArmTimer)
+    document.querySelectorAll('.lazy-kick-all').forEach(renderKickAllButton)
+}
+
+function renderKickAllButton(btn) {
+    const armed = kickAllArmedConf === btn.dataset.conf
+    btn.classList.toggle('armed', armed)
+    btn.textContent = armed
+        ? `Точно викинути всіх (${btn.dataset.count})? Натисни ще раз`
+        : `ВИКИНУТИ ВСІХ (${btn.dataset.count})`
+}
+
+// Набирає абонента і після відповіді заводить у конференцію — так само, ніби він сам
+// набрав номер конференції. Local/…@from-internal іде через діалплан FreePBX, тож
+// працює і для внутрішніх номерів, і для зовнішніх через вихідні маршрути.
+async function dialIntoConf(confNumber, number) {
+    setConfStatus(`Дзвоню ${number} → ${confNumber}. З'явиться у списку, щойно візьме трубку (↻ або повтор)`)
+    sendQuery('channel originate', `Local/${number}@${DIAL_CONTEXT}`, `extension ${confNumber}@${DIAL_CONTEXT}`)
+    await delay(ORIGINATE_SETTLE_MS)
+    loadOneConf(confNumber)
+}
+
+// Номер для набору: канал зводимо до піра, пробіли/дужки/дефіси прибираємо
+// (067-123-45-67 → 0671234567). Повертає '' для всього, що не схоже на номер, — щоб
+// у CLI не потрапили зайві аргументи.
+function normalizeDialNumber(value) {
+    const number = extractPeerName(value).replace(/[\s()-]/g, '')
+    return /^\+?[0-9*#]{2,20}$/.test(number) ? number : ''
+}
+
+function setConfStatus(text) {
+    const status = document.querySelector('.confStatus')
+    if (status) status.textContent = text
+}
+
+// Те саме для hangup: після нього перечитуємо список дзвінків.
+async function hangupChannel(channel) {
+    await sendAndWait('channel request hangup', channel)
+    await delay(SETTLE_MS)
+    showCallsDetailed()
 }
 
 function showAor(sipNumber) {
@@ -62,26 +179,23 @@ function completeContactName(truncated) {
 // pjsip show contact вимагає ПОВНЕ ім'я контакту, а не номер. Тому спочатку
 // pjsip show contacts, дістаємо з виводу рядок "Contact:  200/sips:..." для цього
 // номера, дописуємо обрізаний transport і вже тоді надсилаємо pjsip show contact.
-function showContact(sipNumber) {
-    // Чистимо вивід, щоб не зачепити контакт зі старого (застарілого) виводу.
-    document.querySelectorAll('pre')[2].innerHTML = ''
-    sendQuery('pjsip show contacts')
+async function showContact(sipNumber) {
+    // sendAndWait очищає вивід сам, тому контакт зі старого виводу не потрапить у пошук.
+    const text = await sendAndWait('pjsip show contacts')
+    if (text === null) return
 
-    setTimeout(() => {
-        const text = document.querySelectorAll('pre')[2].textContent
-        const names = [...text.matchAll(/Contact:\s+(\S+)/g)]
-            .map(m => m[1])
-            .filter(name => name.startsWith(`${sipNumber}/`))
+    const names = [...text.matchAll(/Contact:\s+(\S+)/g)]
+        .map(m => m[1])
+        .filter(name => name.startsWith(`${sipNumber}/`))
 
-        if (names.length === 0) {
-            setPeerStatus(`Контакт для ${sipNumber} не знайдено — номер не зареєстрований?`)
-            return
-        }
-        if (names.length > 1) {
-            setPeerStatus(`У ${sipNumber} контактів: ${names.length}, показую перший`)
-        }
-        sendQuery('pjsip show contact', completeContactName(names[0]))
-    }, 1000)
+    if (names.length === 0) {
+        setPeerStatus(`Контакт для ${sipNumber} не знайдено — номер не зареєстрований?`)
+        return
+    }
+    if (names.length > 1) {
+        setPeerStatus(`У ${sipNumber} контактів: ${names.length}, показую перший`)
+    }
+    sendQuery('pjsip show contact', completeContactName(names[0]))
 }
 
 function setPeerStatus(text) {
@@ -95,8 +209,11 @@ function setPeerStatus(text) {
 // (набраний вручну) залишиться неушкодженим.
 function extractPeerName(value) {
     let v = value.trim()
-    if (/^SIP\//i.test(v)) {
-        v = v.replace(/^SIP\//i, '').replace(/-[^-]*$/, '')
+    if (/^(PJ)?SIP\//i.test(v)) {
+        v = v.replace(/^(PJ)?SIP\//i, '').replace(/-[^-]*$/, '')
+    } else if (/^Local\//i.test(v)) {
+        // Local/200@from-internal-00000002;1 → 200
+        v = v.replace(/^Local\//i, '').replace(/@.*$/, '')
     }
     return v
 }
@@ -105,38 +222,176 @@ function showCalls() {
     sendQuery('core show channels')
 }
 
+// hangup-кнопки вставляє decorateOutput: і тут, і на кожному оновленні в режимі повтору.
 function showCallsDetailed() {
     sendQuery('core show channels verbose')
+}
 
-    setTimeout(() => {
-        let preElement = document.querySelectorAll('pre')[2]
 
-        // Зняти підсвітку ПЕРЕД читанням innerHTML, інакше regex захопить теги <mark>
-        // і data-sip у hangup-кнопці буде поламаний. Observer верне підсвітку після нашого запису.
-        unwrapHighlights(preElement)
+// --- Кнопки у виводі (kick / hangup) ---
+// Вставляються з observer-а за останньою надісланою командою, а не з таймера
+// після кліку. Тому вони з'являються одразу з відповіддю і переживають кожне
+// оновлення в режимі повтору (live-моніторинг конференції чи дзвінків).
 
-        // regex to find SIP/xxxxx...
-        const regex = /(SIP\/[^\s]+)/
+// Вставляє кнопку перед ПЕРШИМ каналом у кожному рядку. Повертає кількість кнопок.
+// Викликати лише після unwrapHighlights, інакше regex захопить теги <mark> і
+// data-sip буде поламаний.
+function injectChannelButtons(pre, className, label, onClick) {
+    // Регулярка нижче йде по HTML: data-value клікабельних токенів вона теж зачепила б.
+    unwrapTokens(pre)
+    const lines = pre.innerHTML.split('\n')
+    let count = 0
+    const newLines = lines.map(line => line.replace(CHANNEL_REGEX, (match) => {
+        count++
+        return `<button class="${className} lazy-decor" data-sip="${match}" style="margin-right: 5px; cursor: pointer;">${label}</button>${match}`
+    }))
+    if (count === 0) return 0
 
-        let lines = preElement.innerHTML.split('\n')
+    pre.innerHTML = newLines.join('\n')
+    pre.querySelectorAll(`.${className}`).forEach(btn => {
+        btn.addEventListener('click', (e) => onClick(e.target.dataset.sip))
+    })
+    return count
+}
 
-        let newLines = lines.map(line => {
-            return line.replace(regex, (match) => {
-                return `<button class="generated-hangup-btn" data-sip="${match}" style="margin-right: 5px; cursor: pointer;">hangup</button>${match}`
-            })
-        })
+function decorateOutput(pre) {
+    // Кнопки вже стоять: це наша ж мутація або підсвітка. Вивід не змінився.
+    if (pre.querySelector('.lazy-decor')) return
 
-        preElement.innerHTML = newLines.join('\n')
+    const conf = lastSentCommand.match(/^confbridge list (\S+)$/)
+    if (conf) {
+        const confNumber = conf[1]
+        // Один учасник = один рядок з каналом = одна kick-кнопка.
+        const count = injectChannelButtons(pre, 'generated-kick-btn', 'kick', ch => kickOne(confNumber, ch))
+        if (count === 0) return
 
-        // Add event listeners to the new buttons
-        preElement.querySelectorAll('.generated-hangup-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const sipId = e.target.dataset.sip
-                sendQuery('channel request hangup', sipId)
-            })
-        })
+        pre.style.maxWidth = '90vw'
 
-    }, 1000)
+        const summary = document.createElement('div')
+        summary.className = 'lazy-decor lazy-conf-summary'
+        summary.textContent = `Зараз у конференції ${confNumber}: ${count} ${pluralUk(count, 'учасник', 'учасники', 'учасників')}`
+        pre.prepend(summary)
+        updateConfOption(confNumber, count)
+
+        const kickAllBTN = document.createElement('button')
+        kickAllBTN.className = 'lazy-decor lazy-kick-all'
+        kickAllBTN.dataset.conf = confNumber
+        kickAllBTN.dataset.count = count
+        renderKickAllButton(kickAllBTN)
+        kickAllBTN.addEventListener('click', () => onKickAllClick(confNumber))
+        pre.appendChild(kickAllBTN)
+        return
+    }
+
+    if (lastSentCommand === 'core show channels verbose') {
+        injectChannelButtons(pre, 'generated-hangup-btn', 'hangup', hangupChannel)
+    }
+}
+
+
+// --- Клікабельні канали й номери у виводі ---
+// Кожен канал (PJSIP/200-…) і номер (200) загортаємо в <span.lazy-token>. Клік відкриває
+// меню: підставити в поле «Номер» або «Підсвітити». Без padding, як і <mark>, щоб не
+// зсувати колонки.
+
+// Ідемпотентна: обходить лише текст поза токенами, нашими кнопками й підсумком.
+// Викликати ПІСЛЯ decorateOutput (той читає innerHTML) і ДО highlightMatches.
+function linkifyOutput(pre) {
+    const textNodes = []
+    const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT)
+    let n
+    while ((n = walker.nextNode())) {
+        if (!n.parentElement.closest('.lazy-token, .lazy-decor')) textNodes.push(n)
+    }
+
+    for (const textNode of textNodes) {
+        const text = textNode.nodeValue
+        const matches = [...text.matchAll(TOKEN_REGEX)]
+        if (matches.length === 0) continue
+
+        const fragment = document.createDocumentFragment()
+        let lastIdx = 0
+        for (const m of matches) {
+            if (m.index > lastIdx) fragment.appendChild(document.createTextNode(text.slice(lastIdx, m.index)))
+            const token = document.createElement('span')
+            token.className = 'lazy-token'
+            token.dataset.value = m[0]
+            token.textContent = m[0]
+            fragment.appendChild(token)
+            lastIdx = m.index + m[0].length
+        }
+        if (lastIdx < text.length) fragment.appendChild(document.createTextNode(text.slice(lastIdx)))
+        textNode.parentNode.replaceChild(fragment, textNode)
+    }
+}
+
+function unwrapTokens(root) {
+    const tokens = root.querySelectorAll('.lazy-token')
+    tokens.forEach(token => token.replaceWith(...token.childNodes))
+    if (tokens.length > 0) root.normalize()
+}
+
+function closeTokenMenu() {
+    const menu = document.querySelector('.lazyTokenMenu')
+    if (menu) menu.remove()
+}
+
+function openTokenMenu(token) {
+    closeTokenMenu()
+    const value = token.dataset.value
+    const peer = extractPeerName(value)
+
+    const menu = document.createElement('div')
+    menu.className = 'lazyTokenMenu'
+    menu.innerHTML = `
+        <div class="lazyTokenMenu-title"></div>
+        <button data-action="peer"></button>
+        <button data-action="highlight">Підсвітити</button>`
+    menu.querySelector('.lazyTokenMenu-title').textContent = value
+    menu.querySelector('[data-action="peer"]').textContent = `У поле «Номер»: ${peer}`
+
+    menu.addEventListener('click', (e) => {
+        const action = e.target.dataset.action
+        if (!action) return
+        if (action === 'peer') {
+            const peerInput = document.getElementById('peerInput')
+            peerInput.value = peer
+            setPeerStatus('')
+            peerInput.focus() // Enter одразу покаже endpoint
+            flash(peerInput)
+        } else {
+            highlightInput.value = value
+            refreshOutput()
+            flash(highlightInput)
+        }
+        closeTokenMenu()
+    })
+
+    document.body.appendChild(menu)
+    const rect = token.getBoundingClientRect()
+    const maxLeft = window.scrollX + document.documentElement.clientWidth - menu.offsetWidth - 8
+    menu.style.left = `${Math.max(window.scrollX, Math.min(rect.left + window.scrollX, maxLeft))}px`
+    menu.style.top = `${rect.bottom + window.scrollY + 4}px`
+}
+
+// Коротко блимає полем, щоб було видно, куди підставилось значення.
+function flash(el) {
+    el.classList.remove('lazy-flash')
+    void el.offsetWidth // reflow, інакше повторна анімація не стартує
+    el.classList.add('lazy-flash')
+}
+
+// Один делегований обробник на document: токени живуть у pre[2], який FreePBX
+// постійно замінює, тож вішати слухачі на самі span-и марно.
+function onDocumentClick(e) {
+    const token = e.target.closest('.lazy-token')
+    if (token) {
+        // Користувач виділяв текст мишею (щоб скопіювати) — меню не заважає.
+        if (String(window.getSelection())) return
+        openTokenMenu(token)
+        return
+    }
+    if (!e.target.closest('.lazyTokenMenu')) closeTokenMenu()
 }
 
 
@@ -166,56 +421,65 @@ function unwrapHighlights(root) {
     if (marks.length > 0) root.normalize()
 }
 
-function applyHighlight() {
+// Єдина точка обробки виводу: на кожну зміну DOM (observer) і на введення в поле підсвітки.
+// Порядок важливий: зняти підсвітку → вставити kick/hangup (читає innerHTML) →
+// загорнути канали/номери в клікабельні токени → підсвітити знову.
+function refreshOutput() {
     const pre = document.querySelectorAll('pre')[2]
-    if (!pre || !highlightInput) return
+    if (!pre) return
 
     // Відключаємо observer на час власної мутації — інакше нескінченний цикл.
-    if (highlightObserver) highlightObserver.disconnect()
+    if (outputObserver) outputObserver.disconnect()
 
     try {
         unwrapHighlights(pre)
-        const query = highlightInput.value
-        if (!query) return
-
-        const regex = new RegExp(escapeRegex(query), 'gi')
-        const textNodes = []
-        const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT)
-        let n
-        while ((n = walker.nextNode())) textNodes.push(n)
-
-        for (const textNode of textNodes) {
-            const text = textNode.nodeValue
-            regex.lastIndex = 0
-            if (!regex.test(text)) continue
-
-            regex.lastIndex = 0
-            const fragment = document.createDocumentFragment()
-            let lastIdx = 0
-            let m
-            while ((m = regex.exec(text)) !== null) {
-                if (m.index > lastIdx) {
-                    fragment.appendChild(document.createTextNode(text.slice(lastIdx, m.index)))
-                }
-                const mark = document.createElement('mark')
-                mark.className = 'lazy-highlight'
-                mark.textContent = m[0]
-                fragment.appendChild(mark)
-                lastIdx = m.index + m[0].length
-                if (m[0].length === 0) regex.lastIndex++ // safeguard від zero-width
-            }
-            if (lastIdx < text.length) {
-                fragment.appendChild(document.createTextNode(text.slice(lastIdx)))
-            }
-            textNode.parentNode.replaceChild(fragment, textNode)
-        }
+        decorateOutput(pre)
+        linkifyOutput(pre)
+        highlightMatches(pre)
     } finally {
         // Спостерігаємо за document.body, а НЕ за pre[2]: FreePBX при відправці нової
         // команди замінює сам елемент <pre> новим node-ом, тож підписка на конкретний
         // pre помирає після першого ж перерендеру. body завжди в DOM і ніколи не зникає.
-        if (highlightObserver) {
-            highlightObserver.observe(document.body, { childList: true, characterData: true, subtree: true })
+        if (outputObserver) {
+            outputObserver.observe(document.body, { childList: true, characterData: true, subtree: true })
         }
+    }
+}
+
+function highlightMatches(pre) {
+    const query = highlightInput ? highlightInput.value : ''
+    if (!query) return
+
+    const regex = new RegExp(escapeRegex(query), 'gi')
+    const textNodes = []
+    const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT)
+    let n
+    while ((n = walker.nextNode())) textNodes.push(n)
+
+    for (const textNode of textNodes) {
+        const text = textNode.nodeValue
+        regex.lastIndex = 0
+        if (!regex.test(text)) continue
+
+        regex.lastIndex = 0
+        const fragment = document.createDocumentFragment()
+        let lastIdx = 0
+        let m
+        while ((m = regex.exec(text)) !== null) {
+            if (m.index > lastIdx) {
+                fragment.appendChild(document.createTextNode(text.slice(lastIdx, m.index)))
+            }
+            const mark = document.createElement('mark')
+            mark.className = 'lazy-highlight'
+            mark.textContent = m[0]
+            fragment.appendChild(mark)
+            lastIdx = m.index + m[0].length
+            if (m[0].length === 0) regex.lastIndex++ // safeguard від zero-width
+        }
+        if (lastIdx < text.length) {
+            fragment.appendChild(document.createTextNode(text.slice(lastIdx)))
+        }
+        textNode.parentNode.replaceChild(fragment, textNode)
     }
 }
 
@@ -235,13 +499,18 @@ function kickRepeatProgress() {
     repeatProgressFill.style.width = '100%'
 }
 
-// Українська множина для слова "секунда": 1 секунду / 2-4 секунди / 5+ секунд.
-function pluralizeSeconds(n) {
+// Українська множина: форма для 1 / 2-4 / 5+ (з винятками 11-14).
+function pluralUk(n, one, few, many) {
     const mod10 = n % 10
     const mod100 = n % 100
-    if (mod10 === 1 && mod100 !== 11) return 'секунду'
-    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'секунди'
-    return 'секунд'
+    if (mod10 === 1 && mod100 !== 11) return one
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few
+    return many
+}
+
+// 1 секунду / 2-4 секунди / 5+ секунд.
+function pluralizeSeconds(n) {
+    return pluralUk(n, 'секунду', 'секунди', 'секунд')
 }
 
 // Єдине джерело правди для напису на кнопці повтору.
@@ -256,7 +525,7 @@ function updateRepeatLabel() {
 function startRepeater() {
     clearInterval(repeater)
     repeater = setInterval(() => {
-        buttonCLI.click()
+        if (!isDestructiveCommand(inputCLI.value)) buttonCLI.click()
         kickRepeatProgress()
     }, repeatSeconds * 1000)
     kickRepeatProgress()
@@ -386,123 +655,158 @@ function initExtension() {
 
     // --- Підсвітка тексту в pre[2] ---
     highlightInput = document.getElementById('highlightInput')
-    highlightInput.addEventListener('input', applyHighlight)
+    highlightInput.addEventListener('input', refreshOutput)
 
     document.querySelector('.clearHighlight').addEventListener('click', () => {
         highlightInput.value = ''
-        applyHighlight()
+        refreshOutput()
+    })
+
+    // --- Меню клікабельних каналів/номерів у виводі ---
+    document.addEventListener('click', onDocumentClick)
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeTokenMenu()
+    })
+
+    // Запам'ятовуємо КОЖНУ надіслану команду: нашу, ручну чи з повтору.
+    // Capture-фаза: встигаємо прочитати #astcmd до обробника FreePBX, навіть якщо
+    // той очищає поле. Enter у полі CLI теж ловимо окремо.
+    const rememberSent = () => { lastSentCommand = normalizeCommand(inputCLI.value) }
+    buttonCLI.addEventListener('click', rememberSent, true)
+    inputCLI.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') rememberSent()
     })
 
     // Спостерігаємо за document.body: на кожну зміну DOM (відповідь FreePBX після
-    // будь-якої відправленої команди, інтервал повтору, інжект kick/hangup кнопок)
-    // переалоковуємо підсвітку. Слухаємо body, бо FreePBX замінює сам <pre> цілком —
-    // підписка на конкретний node жила б лише до першого перерендеру.
+    // будь-якої відправленої команди чи інтервалу повтору) вставляємо kick/hangup
+    // кнопки й відновлюємо підсвітку. Слухаємо body, бо FreePBX замінює сам <pre>
+    // цілком, і підписка на конкретний node жила б лише до першого перерендеру.
     // attributes НЕ слухаємо → style-зміни прогресбару не тригерять зайвих проходів.
     if (typeof MutationObserver !== 'undefined') {
-        highlightObserver = new MutationObserver(() => applyHighlight())
-        highlightObserver.observe(document.body, { childList: true, characterData: true, subtree: true })
+        outputObserver = new MutationObserver(() => refreshOutput())
+        outputObserver.observe(document.body, { childList: true, characterData: true, subtree: true })
     }
 
 }
 
-// shoots when conf button pressed, 1 sec delay
-function loadAllConfs() {
-    sendQuery('confbridge list')
-    setTimeout(() => {
-        let preElement = document.querySelectorAll('pre')[2].textContent
+// Рядки таблиці `confbridge list`: ім'я, Users, Marked, Locked, [Muted].
+// Шапка, роздільник "====" і будь-який інший текст під шаблон не підпадають:
+// там немає двох чисел поспіль у 2-й і 3-й колонках.
+const CONF_ROW_REGEX = /^[ \t]*(\S+)[ \t]+(\d+)[ \t]+(\d+)[ \t]+(\S+)/gm
 
-        const regex = /\d{3,}/g
-        let matches = [...preElement.matchAll(regex)].map(item => item[0])
-
-        // Чистимо ЗАВЖДИ, до розгалуження — інакше повторні натискання
-        // «Завантажити конференції» без активних конференцій апендять
-        // попередження одне за одним.
-        outputDiv.innerHTML = ''
-
-        if (matches.length > 0) {
-            let select = document.createElement("select");
-
-            let placeholder = document.createElement("option");
-            placeholder.text = 'Оберіть конференцію'
-
-            select.append(placeholder)
-
-            for (match of matches) {
-                let option = document.createElement("option");
-                option.value = match
-                option.text = match
-                select.appendChild(option);
-            }
-            outputDiv.appendChild(select)
-
-            select.addEventListener('change', () => loadOneConf(select.value))
-        } else {
-            //nema conferenciy
-
-            let warningIfEmpty = document.createElement("p");
-            warningIfEmpty.innerText = 'Зараз немає конференцій :('
-            outputDiv.append(warningIfEmpty)
-        }
-
-    }, 1000)
+function confOptionText(name, users, locked) {
+    return `${name} — ${users} ${pluralUk(users, 'учасник', 'учасники', 'учасників')}${locked ? ' 🔒' : ''}`
 }
 
-// shoots when exact conf is selected, 1 sec delay
-function loadOneConf(confNumber) {
-    // Clear the output buffer to avoid duplicates
-    document.querySelectorAll('pre')[2].innerHTML = ''
+// Перегляд конференції знає точну кількість учасників — оновлюємо й пункт dropdown,
+// щоб він не показував число з моменту завантаження списку.
+function updateConfOption(confNumber, count) {
+    const option = [...document.querySelectorAll('.ext-output select option')].find(o => o.value === confNumber)
+    if (option) option.text = confOptionText(confNumber, count, option.dataset.locked === '1')
+}
 
-    sendQuery('confbridge list ', confNumber)
+function parseConfList(text) {
+    return [...text.matchAll(CONF_ROW_REGEX)].map(m => ({
+        name: m[1],
+        users: Number(m[2]),
+        locked: /^(yes|locked)$/i.test(m[4]),
+    }))
+}
 
-    setTimeout(() => {
+// Список конференцій → dropdown (або попередження, якщо їх немає).
+async function loadAllConfs() {
+    const text = await sendAndWait('confbridge list')
+    if (text === null) return
 
-        let preElement = document.querySelectorAll('pre')[2]
+    const confs = parseConfList(text)
 
-        // Зняти підсвітку ПЕРЕД читанням innerHTML — див. коментар у showCallsDetailed.
-        unwrapHighlights(preElement)
+    // Недонабраний номер переживає перебудову панелі.
+    const dialDraft = outputDiv.querySelector('#dialInput')?.value ?? ''
 
-        // Remove existing buttons (including old kick buttons and kick-all)
-        preElement.querySelectorAll('button').forEach(btn => btn.remove())
+    // Чистимо ЗАВЖДИ, до розгалуження — інакше повторні натискання
+    // «Завантажити конференції» без активних конференцій апендять
+    // попередження одне за одним.
+    outputDiv.innerHTML = ''
 
-        preElement.style.maxWidth = '90vw'
+    if (confs.length === 0) {
+        selectedConf = ''
+        const warningIfEmpty = document.createElement('p')
+        warningIfEmpty.innerText = 'Зараз немає конференцій :('
+        outputDiv.append(warningIfEmpty)
+        return
+    }
 
-        // regex to find SIP/xxxxx...
-        const regex = /(SIP\/[^\s]+)/
+    const select = document.createElement('select')
 
-        let lines = preElement.innerHTML.split('\n')
+    // value='' — щоб повернення на плейсхолдер не надсилало «confbridge list Оберіть конференцію».
+    const placeholder = document.createElement('option')
+    placeholder.value = ''
+    placeholder.text = 'Оберіть конференцію'
+    select.append(placeholder)
 
-        let newLines = lines.map(line => {
-            return line.replace(regex, (match) => {
-                return `<button class="generated-kick-btn" data-sip="${match}" style="margin-right: 5px; cursor: pointer;">kick</button>${match}`
-            })
-        })
+    for (const conf of confs) {
+        const option = document.createElement('option')
+        option.value = conf.name
+        option.text = confOptionText(conf.name, conf.users, conf.locked)
+        if (conf.locked) option.dataset.locked = '1'
+        select.appendChild(option)
+    }
+    // Оновлення списку не скидає вибрану конференцію, якщо вона ще існує.
+    if (confs.some(c => c.name === selectedConf)) select.value = selectedConf
+    outputDiv.appendChild(select)
 
-        preElement.innerHTML = newLines.join('\n')
+    select.addEventListener('change', () => {
+        if (select.value) loadOneConf(select.value)
+    })
 
-        // Add event listeners to the inline kick buttons
-        preElement.querySelectorAll('.generated-kick-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const sipId = e.target.dataset.sip
-                kickOne(confNumber, sipId)
-                // We keep the reloading logic that was inside kickOne, so no extra reload needed here
-            })
-        })
+    // Повторний вибір тієї ж конференції не викликає change, тому оновлення робимо окремою кнопкою.
+    const refresh = document.createElement('button')
+    refresh.className = 'refreshConf'
+    refresh.title = 'Перечитати вибрану конференцію (або список, якщо нічого не вибрано)'
+    refresh.innerText = '↻ Оновити'
+    refresh.addEventListener('click', () => {
+        if (select.value) loadOneConf(select.value)
+        else loadAllConfs()
+    })
+    outputDiv.appendChild(refresh)
 
-        // Re-add "Kick All" button at the bottom
-        let kickAllBTN = document.createElement('button')
-        kickAllBTN.innerText = 'ВИКИНУТИ ВСІХ'
-        kickAllBTN.style.color = 'red'
-        kickAllBTN.style.marginTop = '10px'
-        kickAllBTN.style.display = 'block'
+    // --- Набрати абонента у вибрану конференцію ---
+    const dialInput = document.createElement('input')
+    dialInput.id = 'dialInput'
+    dialInput.type = 'text'
+    dialInput.placeholder = 'номер, напр. 210'
+    dialInput.value = dialDraft
+    const dialButton = document.createElement('button')
+    dialButton.className = 'dialToConf'
+    dialButton.title = `channel originate Local/<номер>@${DIAL_CONTEXT} extension <конференція>@${DIAL_CONTEXT} — телефон задзвонить, після відповіді абонент потрапить у конференцію`
+    dialButton.textContent = '📞 Набрати в конференцію'
+    const status = document.createElement('span')
+    status.className = 'confStatus'
 
-        kickAllBTN.addEventListener('click', () => {
-            kickAll(confNumber)
-        })
-        preElement.appendChild(kickAllBTN)
+    const dial = () => {
+        if (!select.value) return setConfStatus('Спершу оберіть конференцію')
+        const number = normalizeDialNumber(dialInput.value)
+        if (!number) return setConfStatus('Номер — лише цифри (можна з +, *, #)')
+        dialIntoConf(select.value, number)
+    }
+    dialButton.addEventListener('click', dial)
+    dialInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') dial()
+    })
+    outputDiv.append(dialInput, dialButton, status)
+}
 
-    }, 1000)
+// Учасники однієї конференції. Кнопки kick / ВИКИНУТИ ВСІХ вставляє decorateOutput.
+async function loadOneConf(confNumber) {
+    selectedConf = confNumber
+    const text = await sendAndWait('confbridge list ', confNumber)
+    if (text === null) return
 
-
+    // Конференція завершилась (викинули останнього або всі вийшли), тож dropdown застарів.
+    if (/No conference bridge named/i.test(text)) {
+        selectedConf = ''
+        loadAllConfs()
+    }
 }
 
 

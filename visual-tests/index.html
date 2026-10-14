@@ -34,7 +34,7 @@
     </li>
     <li>
       <a class="title" href="harness.html?scenario=confs-empty">3. Список конференцій (порожньо)</a>
-      <span class="desc">Мок відповідає «No active conferences» → має з'явитися попередження «Заз немає конференцій :(».</span>
+      <span class="desc">Мок відповідає лише шапкою таблиці (як реальний Asterisk) → має з'явитися попередження «Зараз немає конференцій :(».</span>
     </li>
     <li>
       <a class="title" href="harness.html?scenario=one-conf">4. Конференція з учасниками</a>
@@ -59,6 +59,18 @@
     <li>
       <a class="title" href="harness.html?scenario=highlight-repeat">9. Підсвітка + повтор 5с <span class="badge">регресія</span></a>
       <span class="desc">Це сценарій, заради якого фічу й додали. Підсвітка «200» залишається жовтою навіть після того, як <code>setInterval(5000)</code> перерендерює <code>pre[2]</code> — на відміну від <kbd>Ctrl</kbd>+<kbd>F</kbd>, який скидається.</span>
+    </li>
+    <li>
+      <a class="title" href="harness.html?scenario=kick-all-confirm">10. Підтвердження «ВИКИНУТИ ВСІХ» + лічильник учасників</a>
+      <span class="desc">Зверху виводу конференції — «Зараз у конференції 5500: 3 учасники». «ВИКИНУТИ ВСІХ» натиснуто один раз: кнопка озброєна на 4 с, викидає лише другий клік. Стан переживає перемальовування в режимі повтору.</span>
+    </li>
+    <li>
+      <a class="title" href="harness.html?scenario=dial">11. Набрати номер у конференцію</a>
+      <span class="desc">Поле «номер» + «📞 Набрати в конференцію» біля dropdown → <code>channel originate Local/210@from-internal extension 5500@from-internal</code>. Мок «бере трубку» через 3 с, повтор показує нового учасника.</span>
+    </li>
+    <li>
+      <a class="title" href="harness.html?scenario=tokens">12. Клік по каналу чи номеру у виводі</a>
+      <span class="desc">Канали й номери підкреслені пунктиром. Клік відкриває меню: підставити в поле «Номер» (канал зводиться до піра) або в «Підсвітити».</span>
     </li>
   </ul>
 
