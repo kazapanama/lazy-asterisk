@@ -24,7 +24,7 @@ const DEFAULT_HTML = `<!DOCTYPE html>
 </html>`
 
 export function bootDOM({ html = DEFAULT_HTML } = {}) {
-  const dom = new JSDOM(html, { runScripts: 'dangerously' })
+  const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true })
   const { window } = dom
 
   const timers = []

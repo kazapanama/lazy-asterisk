@@ -910,6 +910,130 @@ describe('repeat never re-sends destructive commands', () => {
   })
 })
 
+describe('repeat pauses while typing in the CLI and while the tab is hidden', () => {
+  const startRepeat = (boot) => {
+    let clicks = 0
+    boot.document.getElementById('send').addEventListener('click', () => clicks++)
+    boot.document.getElementById('astcmd').value = 'core show channels'
+    boot.document.querySelector('.onRepeat').click()
+    return () => clicks
+  }
+  const setHidden = (document, value) => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => value })
+    document.dispatchEvent(new document.defaultView.Event('visibilitychange'))
+  }
+
+  test('focus in #astcmd stops the interval, resets the bar and shows the pause label', () => {
+    const boot = bootDOM()
+    const { document, pendingIntervals } = boot
+    startRepeat(boot)
+    expect(pendingIntervals()).toHaveLength(1)
+
+    document.getElementById('astcmd').focus()
+    expect(pendingIntervals()).toHaveLength(0)
+    const btn = document.querySelector('.onRepeat')
+    expect(btn.classList.contains('paused')).toBe(true)
+    expect(btn.innerText).toBe('Пауза — курсор у полі CLI')
+    expect(document.querySelector('.repeatProgress-fill').style.width).toBe('0%')
+  })
+
+  test('blur resumes with a fresh countdown and does NOT send immediately', () => {
+    const boot = bootDOM()
+    const { document, pendingIntervals } = boot
+    const clicks = startRepeat(boot)
+    const cli = document.getElementById('astcmd')
+    cli.focus()
+    cli.value = 'confbridge list 5500' // користувач набрав нову команду
+    cli.blur()
+
+    expect(clicks()).toBe(0)
+    const intervals = pendingIntervals()
+    expect(intervals).toHaveLength(1)
+    expect(intervals[0].ms).toBe(5000)
+    expect(document.querySelector('.onRepeat').innerText).toBe('Перестати повторювати')
+    expect(document.querySelector('.onRepeat').classList.contains('paused')).toBe(false)
+
+    intervals[0].fn()
+    expect(clicks()).toBe(1)
+    expect(astcmd(document)).toBe('confbridge list 5500')
+  })
+
+  test('safety net: a tick that fires while the CLI has focus sends nothing', () => {
+    const boot = bootDOM()
+    const { document, pendingIntervals } = boot
+    const clicks = startRepeat(boot)
+    const tick = pendingIntervals()[0].fn
+    // Подію focus «пропустили»: фокус є, а повтор про це не знає.
+    Object.defineProperty(document, 'activeElement', { configurable: true, get: () => document.getElementById('astcmd') })
+    tick()
+    expect(clicks()).toBe(0)
+    expect(document.querySelector('.onRepeat').classList.contains('paused')).toBe(true)
+  })
+
+  test('hidden tab pauses; visible again sends at once (data is stale) and restarts', () => {
+    const boot = bootDOM()
+    const { document, pendingIntervals } = boot
+    const clicks = startRepeat(boot)
+
+    setHidden(document, true)
+    expect(pendingIntervals()).toHaveLength(0)
+    expect(document.querySelector('.onRepeat').innerText).toBe('Пауза — вкладка прихована')
+
+    setHidden(document, false)
+    expect(clicks()).toBe(1)
+    expect(pendingIntervals()).toHaveLength(1)
+    expect(document.querySelector('.onRepeat').innerText).toBe('Перестати повторювати')
+  })
+
+  test('back from hidden: a destructive command in the CLI is not re-sent', () => {
+    const boot = bootDOM()
+    const { document } = boot
+    const clicks = startRepeat(boot)
+    document.getElementById('astcmd').value = 'confbridge kick   5500   all'
+    setHidden(document, true)
+    setHidden(document, false)
+    expect(clicks()).toBe(0)
+  })
+
+  test('the stepper while paused changes the label value but starts no interval', () => {
+    const boot = bootDOM()
+    const { document, pendingIntervals } = boot
+    startRepeat(boot)
+    document.getElementById('astcmd').focus()
+    document.querySelector('.repeatPlus').click()
+    expect(pendingIntervals()).toHaveLength(0)
+    document.getElementById('astcmd').blur()
+    expect(pendingIntervals()[0].ms).toBe(6000)
+  })
+
+  test('stopping while paused clears the pause; focus/visibility do nothing when repeat is off', () => {
+    const boot = bootDOM()
+    const { document, pendingIntervals } = boot
+    startRepeat(boot)
+    const cli = document.getElementById('astcmd')
+    cli.focus()
+    document.querySelector('.onRepeat').click() // стоп
+    const btn = document.querySelector('.onRepeat')
+    expect(btn.classList.contains('paused')).toBe(false)
+    expect(btn.innerText).toBe('Відправляти раз в 5 секунд')
+
+    cli.blur()
+    setHidden(document, true)
+    setHidden(document, false)
+    expect(pendingIntervals()).toHaveLength(0)
+  })
+})
+
+describe('manifest.json', () => {
+  test('no unused / invalid permissions — the content script needs none', async () => {
+    const fs = await import('node:fs')
+    const manifest = JSON.parse(fs.readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'))
+    expect(manifest.permissions).toBeUndefined()
+    expect(manifest.host_permissions).toBeUndefined()
+    expect(manifest.content_scripts[0].js).toEqual(['utils.js', 'main.js'])
+  })
+})
+
 describe('highlight', () => {
   test('the input + clear button + label exist in the panel', () => {
     const { document } = bootDOM()

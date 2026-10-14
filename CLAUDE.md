@@ -102,6 +102,7 @@ After `kickOne` / `hangupChannel`: wait for the response → `SETTLE_MS` (500 ms
 - **Interval stepper:** `.repeatMinus` / `.repeatPlus` call `adjustRepeat(±1)`, clamped to a **1s minimum**. Adjusting **while active** tears down and rebuilds the interval via `startRepeater()` so the new cadence (and progress-bar speed) take effect immediately.
 - **Dynamic label:** `updateRepeatLabel()` is the single source of truth — `Перестати повторювати` while active, otherwise `Відправляти раз в <N> <pluralizeSeconds(N)>`. `pluralizeSeconds` applies Ukrainian plural rules (1 секунду / 2-4 секунди / 5+ секунд). Called at init and on every toggle/adjust.
 - **Countdown bar:** `.repeatProgress` / `.repeatProgress-fill` is shown only while active (`.active` class). `kickRepeatProgress()` resets width to 0% then animates to 100% over `repeatSeconds`s on every tick. **The `void offsetWidth` reflow between the two width writes is mandatory** — without it the browser coalesces both style mutations and the transition never runs.
+- **Pause:** an active repeat pauses while `#astcmd` has focus (a tick would send a half-typed command) and while the tab is hidden (`document.hidden`, no point loading the PBX). `syncRepeatPause()` runs on `focus`/`blur` of `#astcmd` and on `visibilitychange`; state is `repeatPausedFor` (`'' | 'cli' | 'hidden'`, from `repeatPauseReason()`). Paused = interval cleared, bar reset, `.paused` on the button, label from `REPEAT_PAUSE_LABELS`. Resume = fresh countdown via `startRepeater()`; coming back from **hidden** also sends one tick at once (data is stale), from **cli** it does not. Each tick re-checks `repeatPauseReason()` as a safety net. The stepper does not restart the interval while paused.
 
 ## Peer row (pjsip show aor / endpoint / contact)
 
@@ -121,7 +122,7 @@ npm test         # run once
 npm run test:watch
 ```
 
-Stack: **Vitest** + **jsdom** (used directly, not via `environment: 'jsdom'`). Both are `devDependencies` only — they never ship to the Chrome bundle.
+Stack: **Vitest** + **jsdom** (used directly, not via `environment: 'jsdom'`). `bootDOM` passes `pretendToBeVisual: true` — otherwise jsdom reports `document.hidden === true` and every repeat tick would be paused; tests flip `hidden` with `Object.defineProperty` + a `visibilitychange` event. Both are `devDependencies` only — they never ship to the Chrome bundle.
 
 ### How the tests work
 
@@ -152,5 +153,7 @@ The whole point of the suite is to catch behavior regressions in the **shipped**
 - **Do not bump jsdom to a major version blindly** — the `innerText` semantics may shift again.
 
 ## Manifest target
+
+The manifest has **no** `permissions` / `host_permissions`: a declarative content script needs none (the old `"host_permissions": ["activeTab"]` was not even a valid match pattern, `scripting` was unused). A test guards this.
 
 `content_scripts[0].matches` is `*://*/admin/config.php?display=cli*`, so the extension activates on the FreePBX CLI page of any PBX. To pin it to a single PBX, replace `*://*` with `http://<host>` (and keep the README in sync). Don't hard-code a real PBX address into the repo — it is public.

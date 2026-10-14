@@ -15,6 +15,8 @@ let outputObserver
 let repeatProgress
 let repeatProgressFill
 let repeatSeconds = 5
+// Чому активний повтор зараз на паузі: '' | 'cli' | 'hidden' (див. repeatPauseReason).
+let repeatPausedFor = ''
 
 // Остання надіслана в CLI команда, нормалізована (див. normalizeCommand).
 // Оновлюється на КОЖНЕ надсилання: наше, ручне чи з інтервалу повтору.
@@ -513,29 +515,78 @@ function pluralizeSeconds(n) {
     return pluralUk(n, 'секунду', 'секунди', 'секунд')
 }
 
+const REPEAT_PAUSE_LABELS = {
+    cli: 'Пауза — курсор у полі CLI',
+    hidden: 'Пауза — вкладка прихована',
+}
+
 // Єдине джерело правди для напису на кнопці повтору.
 function updateRepeatLabel() {
     if (!repeatButton) return
-    repeatButton.innerText = isOnRepeat
-        ? 'Перестати повторювати'
-        : `Відправляти раз в ${repeatSeconds} ${pluralizeSeconds(repeatSeconds)}`
+    repeatButton.innerText = !isOnRepeat
+        ? `Відправляти раз в ${repeatSeconds} ${pluralizeSeconds(repeatSeconds)}`
+        : REPEAT_PAUSE_LABELS[repeatPausedFor] || 'Перестати повторювати'
+}
+
+// Чому повтор зараз не повинен надсилати ('' — може):
+//   cli    — користувач набирає команду в #astcmd; тік відправив би її недописаною;
+//   hidden — вкладку не видно, нема для кого навантажувати АТС.
+function repeatPauseReason() {
+    if (document.hidden) return 'hidden'
+    if (document.activeElement === inputCLI) return 'cli'
+    return ''
+}
+
+// Один тік повтору: перенадсилає те, що зараз у #astcmd, крім деструктивних команд.
+function sendRepeatTick() {
+    if (!isDestructiveCommand(inputCLI.value)) buttonCLI.click()
 }
 
 // (Пере)запускає інтервал повтору з поточним repeatSeconds і синхронізує прогресбар.
 function startRepeater() {
     clearInterval(repeater)
     repeater = setInterval(() => {
-        if (!isDestructiveCommand(inputCLI.value)) buttonCLI.click()
+        // Запасна перевірка, якщо подію focus/visibilitychange пропустили.
+        if (repeatPauseReason()) return syncRepeatPause()
+        sendRepeatTick()
         kickRepeatProgress()
     }, repeatSeconds * 1000)
     kickRepeatProgress()
+}
+
+function resetRepeatProgress() {
+    repeatProgressFill.style.transition = 'none'
+    repeatProgressFill.style.width = '0%'
+}
+
+// Ставить активний повтор на паузу або знімає з неї. Викликається на focus/blur
+// у #astcmd і на visibilitychange. Під час паузи інтервал зупинено, а бар скинуто,
+// щоб не показував відлік до надсилання, якого не буде.
+// Після паузи відлік починається заново. Якщо вкладка була прихована, дані застаріли,
+// тож перший тік надсилаємо одразу.
+function syncRepeatPause() {
+    if (!isOnRepeat) return
+    const reason = repeatPauseReason()
+    if (reason === repeatPausedFor) return
+    const wasHidden = repeatPausedFor === 'hidden'
+    repeatPausedFor = reason
+
+    if (reason) {
+        clearInterval(repeater)
+        resetRepeatProgress()
+    } else {
+        if (wasHidden) sendRepeatTick()
+        startRepeater()
+    }
+    repeatButton.classList.toggle('paused', reason !== '')
+    updateRepeatLabel()
 }
 
 // Коригує інтервал на delta секунд (мінімум 1с). Якщо повтор активний — миттєво перезапускає його.
 function adjustRepeat(delta) {
     repeatSeconds = Math.max(1, repeatSeconds + delta)
     updateRepeatLabel()
-    if (isOnRepeat) startRepeater()
+    if (isOnRepeat && !repeatPausedFor) startRepeater()
 }
 
 //shoots at the start
@@ -637,16 +688,22 @@ function initExtension() {
             repeatProgress.classList.add('active')
             startRepeater()
             repeatButton.classList.add('test')
+            syncRepeatPause()
         } else {
             isOnRepeat = false
+            repeatPausedFor = ''
             clearInterval(repeater)
             repeatProgress.classList.remove('active')
-            repeatProgressFill.style.transition = 'none'
-            repeatProgressFill.style.width = '0%'
-            repeatButton.classList.remove('test')
+            resetRepeatProgress()
+            repeatButton.classList.remove('test', 'paused')
         }
         updateRepeatLabel()
     })
+
+    // Пауза повтору: поки курсор у полі CLI і поки вкладка прихована.
+    inputCLI.addEventListener('focus', syncRepeatPause)
+    inputCLI.addEventListener('blur', syncRepeatPause)
+    document.addEventListener('visibilitychange', syncRepeatPause)
 
     document.querySelector('.repeatMinus').addEventListener('click', () => adjustRepeat(-1))
     document.querySelector('.repeatPlus').addEventListener('click', () => adjustRepeat(1))
