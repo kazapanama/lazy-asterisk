@@ -17,6 +17,9 @@
     'repeat':           { label: 'repeat — toggle interval',                       },
     'highlight':        { label: 'highlight — підсвітка "200"',      calls: 'multi'},
     'highlight-repeat': { label: 'highlight + repeat (стійкість)',   calls: 'multi'},
+    'kick-all-confirm': { label: 'kick-all — підтвердження',        conf: 'multi' },
+    'dial':             { label: 'dial — набрати 210 у 5500',        conf: 'multi' },
+    'tokens':           { label: 'tokens — клік по каналу/номеру',   calls: 'multi'},
   };
 
   if (!scenario || !SCENARIOS[scenario]) {
@@ -44,27 +47,27 @@
     setRadio('calls-scenario', cfg.calls);
 
     if (scenario === 'confs-multi' || scenario === 'confs-empty') {
-      showBanner('Автоматично натиснуто «Завантажити конференції». Чекай ≈1с до відображення dropdown/попередження.');
+      showBanner('Автоматично натиснуто «Завантажити конференції». Dropdown/попередження з\'являються одразу з відповіддю.');
       document.querySelector('.loadConfs').click();
 
     } else if (scenario === 'one-conf') {
-      showBanner('Завантажую перелік конф → через 1.1с обираю 5500 → ще через 1с з\'являться kick-кнопки.');
+      showBanner('Завантажую перелік конф → обираю 5500 → kick-кнопки з\'являються одразу з відповіддю. Увімкни повтор — кнопки переживуть кожне оновлення.');
       document.querySelector('.loadConfs').click();
-      // Розширення викликає loadAllConfs з setTimeout 1000 — чекаємо трохи більше, щоб dropdown зрендерився.
+      // loadAllConfs async: dropdown з'являється в мікрозадачі після відповіді моку.
       setTimeout(() => {
         const select = document.querySelector('.ext-output select');
         if (select) {
           select.value = '5500';
           select.dispatchEvent(new Event('change'));
         }
-      }, 1100);
+      }, 50);
 
     } else if (scenario === 'calls') {
       showBanner('Автоматично натиснуто «Показати дзвінки».');
       document.querySelector('.showCalls').click();
 
     } else if (scenario === 'calls-detailed') {
-      showBanner('Автоматично натиснуто «Показати дзвінки (детальніше)». Через ≈1с з\'являться hangup-кнопки в pre[2].');
+      showBanner('Автоматично натиснуто «Показати дзвінки (детальніше)». Hangup-кнопки з\'являються в pre[2] одразу з відповіддю.');
       document.querySelector('.showCallsDetailed').click();
 
     } else if (scenario === 'repeat') {
@@ -77,7 +80,7 @@
       // Вписуємо "200" у поле підсвітки і відкриваємо детальний список дзвінків.
       document.getElementById('highlightInput').value = '200';
       document.getElementById('highlightInput').dispatchEvent(new Event('input'));
-      showBanner('У полі «Підсвітити в виводі» — "200". Через ≈1с з\'являться hangup-кнопки, і всі входження "200" будуть підсвічені жовтим (включно з цифрами у hangup-кнопках та тривалостях).');
+      showBanner('У полі «Підсвітити в виводі» — "200". Hangup-кнопки з\'являються одразу, і всі входження "200" будуть підсвічені жовтим (включно з цифрами у hangup-кнопках та тривалостях).');
       document.querySelector('.showCallsDetailed').click();
 
     } else if (scenario === 'highlight-repeat') {
@@ -85,11 +88,35 @@
       document.getElementById('highlightInput').value = '200';
       document.getElementById('highlightInput').dispatchEvent(new Event('input'));
       document.getElementById('astcmd').value = 'core show channels verbose';
-      showBanner('Підсвітка "200" увімкнена, у CLI — "core show channels verbose", репіт-режим увімкнено. Кожні 5с FreePBX-мок переписує pre[2] — підсвітка автоматично відновлюється (через MutationObserver). Ctrl+F такого не вміє.');
+      showBanner('Підсвітка "200" увімкнена, у CLI — "core show channels verbose", репіт-режим увімкнено. Кожні 5с FreePBX-мок переписує pre[2] — hangup-кнопки й підсвітка автоматично відновлюються (через MutationObserver). Ctrl+F такого не вміє.');
       // Спершу один прямий клік, щоб одразу побачити підсвітку.
       document.querySelector('.showCallsDetailed').click();
       // А потім вмикаємо інтервал — кожні 5с буде новий рендер pre[2] + переалоковка підсвітки.
-      setTimeout(() => document.querySelector('.onRepeat').click(), 1100);
+      setTimeout(() => document.querySelector('.onRepeat').click(), 50);
+
+    } else if (scenario === 'kick-all-confirm' || scenario === 'dial') {
+      document.querySelector('.loadConfs').click();
+      setTimeout(() => {
+        const select = document.querySelector('.ext-output select');
+        select.value = '5500';
+        select.dispatchEvent(new Event('change'));
+        setTimeout(() => {
+          if (scenario === 'kick-all-confirm') {
+            showBanner('Конференція 5500: зверху рядок з кількістю учасників. «ВИКИНУТИ ВСІХ» уже натиснуто один раз — кнопка озброєна на 4 с, викине лише другий клік. Увімкни повтор — стан переживе перемальовування.');
+            document.querySelector('.lazy-kick-all').click();
+          } else {
+            showBanner('Набрано 210 у конференцію 5500. Мок «бере трубку» через 3 с; повтор увімкнено, тож новий учасник з\'явиться в списку сам, а лічильник зверху зміниться з 3 на 4.');
+            document.getElementById('dialInput').value = '210';
+            document.querySelector('.dialToConf').click();
+            document.querySelector('.onRepeat').click();
+          }
+        }, 50);
+      }, 50);
+
+    } else if (scenario === 'tokens') {
+      showBanner('Канали й номери у виводі підкреслені пунктиром. Клік по першому каналу відкрив меню: «У поле «Номер»» підставить 200, «Підсвітити» — сам канал.');
+      document.querySelector('.showCallsDetailed').click();
+      setTimeout(() => document.querySelector('pre#cli-output .lazy-token').click(), 50);
     }
   }, 50);
 })();
